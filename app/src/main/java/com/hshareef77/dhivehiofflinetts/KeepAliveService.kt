@@ -38,7 +38,7 @@ class KeepAliveService : Service() {
         private var lastUpdate = 0L
 
         private fun notification(ctx: Context, text: String): Notification {
-            val nm = ctx.getSystemService(NotificationManager::class.java)
+            val nm = ctx.getSystemService(NotificationManager::class.java)!!
             if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL) == null) {
                 nm.createNotificationChannel(NotificationChannel(CHANNEL, "Downloads and speech generation", NotificationManager.IMPORTANCE_LOW))
             }
@@ -65,7 +65,7 @@ class KeepAliveService : Service() {
             val now = System.currentTimeMillis()
             if (now - lastUpdate < 2000) return
             lastUpdate = now
-            try { ctx.getSystemService(NotificationManager::class.java).notify(ID, notification(ctx, text)) } catch (e: Exception) {}
+            try { ctx.getSystemService(NotificationManager::class.java)?.notify(ID, notification(ctx, text)) } catch (e: Exception) {}
         }
 
         fun stop(ctx: Context) {
