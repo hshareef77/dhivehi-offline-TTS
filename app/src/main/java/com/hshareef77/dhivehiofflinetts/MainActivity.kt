@@ -1,188 +1,458 @@
 package com.hshareef77.dhivehiofflinetts
 
+import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.text.InputType
+import android.view.Gravity
 import android.view.View
-import android.view.inputmethod.InputType
 import android.widget.*
 import java.io.File
 
 /**
- * Accessible development prototype. Speech synthesis is deliberately disabled until an
- * on-device CSM backend (including Mimi decoding) is verified on Android.
+ * Accessible main screen (TalkBack / Jieshuo+). Built from plain Android views with
+ * explicit labels, headings, a polite live region for status, and spoken announcements
+ * for important events. All speech is generated on the phone from the installed model.
  */
-class MainActivity : Activity() {
-    private lateinit var editor: EditText
+class MainActivity : Activity(), TtsApp.Listener {
+    private lateinit var app: TtsApp
     private lateinit var status: TextView
-    private lateinit var voices: Spinner
+    private lateinit var modelInfo: TextView
+    private lateinit var editor: EditText
+    private lateinit var voices: RadioGroup
+    private lateinit var downloadButton: Button
+    private lateinit var cancelButton: Button
+    private lateinit var updateButton: Button
+    private lateinit var deleteModelButton: Button
+    private lateinit var generateButton: Button
+    private lateinit var playButton: Button
+    private lateinit var position: SeekBar
     private lateinit var speed: SeekBar
+    private lateinit var recordings: Spinner
+    private lateinit var nowPlaying: TextView
+
     private var player: MediaPlayer? = null
-    private var audioUri: Uri? = null
-    private val importTxtCode = 101
-    private val importAudioCode = 102
-    private val exportAudioCode = 103
+    private var currentFile: File? = null
+    private var currentUri: Uri? = null
+    private var recordingFiles: List<File> = emptyList()
+    private val handler = Handler(Looper.getMainLooper())
+    private val tick = object : Runnable {
+        override fun run() { updatePosition(); handler.postDelayed(this, 500) }
+    }
+
+    private val speakerNames = listOf("Female voice 1", "Male voice 1", "Female voice 2", "Male voice 2", "Voice 5")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val padding = (16 * resources.displayMetrics.density).toInt()
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(padding, padding, padding, padding)
-        }
-        fun caption(label: String): TextView = TextView(this).apply {
+        app = application as TtsApp
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, pad, pad, pad) }
+
+        fun heading(label: String) = TextView(this).apply {
+            text = label
+            textSize = 22f
+            setPadding(0, pad, 0, pad / 2)
+            if (Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
+        }.also { root.addView(it) }
+        fun info(label: String) = TextView(this).apply {
+            text = label; textSize = 17f; setPadding(0, pad / 4, 0, pad / 4)
+        }.also { root.addView(it) }
+        fun button(label: String, onPress: () -> Unit) = Button(this).apply {
             text = label
             textSize = 18f
-            setPadding(0, padding / 2, 0, padding / 2)
-        }
-        fun button(label: String, onPress: () -> Unit): Button = Button(this).apply {
-            text = label
-            contentDescription = label
+            isAllCaps = false
             setOnClickListener { onPress() }
+        }.also { root.addView(it) }
+
+        heading("Dhivehi Offline TTS")
+        status = info("").apply {
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            isFocusable = true
+            contentDescription = null
         }
-        root.addView(caption("Dhivehi Offline TTS — Development Prototype"))
-        root.addView(caption("Enter or import Dhivehi text"))
+
+        heading("Voice model")
+        modelInfo = info("")
+        downloadButton = button("Download voice model") { confirmDownload() }
+        cancelButton = button("Cancel") { app.cancelJob(); say("Cancelling…") }
+        updateButton = button("Check for voice model update") {
+            say("Checking for updates…")
+            app.checkForUpdate { say(it) }
+        }
+        deleteModelButton = button("Delete voice model") { confirmDelete() }
+
+        heading("Dhivehi text")
+        val editorLabel = info("Text to speak")
         editor = EditText(this).apply {
-            hint = "މިތާ ލިޔުއްވާ"
-            contentDescription = "Dhivehi text editor"
+            id = View.generateViewId()
+            hint = "ދިވެހި ލިޔުން މިތަނުގައި ލިޔުއްވާ"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            minLines = 5
+            minLines = 4
+            maxLines = 12
+            gravity = Gravity.TOP or Gravity.START
+            textDirection = View.TEXT_DIRECTION_FIRST_STRONG
+            textSize = 20f
         }
+        editorLabel.labelFor = editor.id
         root.addView(editor)
-        root.addView(button("Import UTF-8 TXT") { pickFile("text/plain", importTxtCode) })
-        root.addView(caption("Speaker"))
-        voices = Spinner(this).apply {
-            contentDescription = "Dhivehi speaker choice"
-            adapter = ArrayAdapter(
-                this@MainActivity,
-                android.R.layout.simple_spinner_dropdown_item,
-                listOf("Female speaker 1", "Male speaker 1", "Female speaker 2",
-                    "Male speaker 2", "Male speaker 3")
-            )
+        button("Import text file") { pick("text/*", REQ_TXT) }
+        button("Clear text") { editor.setText(""); say("Text cleared") }
+
+        heading("Voice")
+        voices = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL; contentDescription = "Choose a voice" }
+        speakerNames.forEachIndexed { i, name ->
+            voices.addView(RadioButton(this).apply { id = 1000 + i; text = name; textSize = 18f })
         }
+        voices.check(1000 + getPreferences(MODE_PRIVATE).getInt("speaker", 0))
+        voices.setOnCheckedChangeListener { _, id -> getPreferences(MODE_PRIVATE).edit().putInt("speaker", id - 1000).apply() }
         root.addView(voices)
-        status = caption("The offline speech engine is not installed or verified. Audio generation is unavailable.")
-        status.isFocusable = true
-        root.addView(status)
-        root.addView(button("Generate speech — not available yet") {
-            report("The 6.6 GB CSM model has not been converted and tested for local Android speech generation.")
-        })
-        root.addView(caption("Audio playback testing (existing WAV or other Android-supported audio files)"))
-        root.addView(button("Open audio file") { pickFile("audio/*", importAudioCode) })
-        root.addView(button("Play") { play() })
-        root.addView(button("Pause") {
-            player?.let { if (it.isPlaying) it.pause() }
-            report("Playback paused")
-        })
-        root.addView(button("Stop") {
-            player?.let { if (it.isPlaying) it.pause(); it.seekTo(0) }
-            report("Playback stopped")
-        })
-        root.addView(caption("Playback speed, 0.5 to 2.0 times"))
-        speed = SeekBar(this).apply {
-            max = 15
-            progress = 5
-            contentDescription = "Playback speed, 1.0 times"
+
+        heading("Speech")
+        generateButton = button("Generate speech") { generate() }
+
+        heading("Playback")
+        nowPlaying = info("No recording selected.")
+        playButton = button("Play") { togglePlay() }
+        button("Stop") { stopPlayback(); say("Stopped") }
+        button("Back 10 seconds") { skip(-10_000) }
+        button("Forward 10 seconds") { skip(10_000) }
+        info("Position in recording")
+        position = SeekBar(this).apply {
+            max = 0
+            contentDescription = "Position in recording"
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    val value = (progress + 5) / 10f
-                    contentDescription = "Playback speed, ${value} times"
-                    try { player?.let { it.playbackParams = it.playbackParams.setSpeed(value) } } catch (_: Exception) {}
+                override fun onProgressChanged(sb: SeekBar?, value: Int, fromUser: Boolean) {
+                    if (fromUser) player?.seekTo(value * 1000)
+                    if (Build.VERSION.SDK_INT >= 30) stateDescription = "${fmt(value)} of ${fmt(max)}"
                 }
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
+            })
+        }
+        root.addView(position)
+        info("Playback speed")
+        speed = SeekBar(this).apply {
+            max = 15 // 0.5x .. 2.0x in 0.1 steps
+            progress = getPreferences(MODE_PRIVATE).getInt("speed", 5)
+            contentDescription = "Playback speed"
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, value: Int, fromUser: Boolean) {
+                    describeSpeed()
+                    getPreferences(MODE_PRIVATE).edit().putInt("speed", value).apply()
+                    player?.let { p -> if (p.isPlaying) applySpeed(p) }
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
             })
         }
         root.addView(speed)
-        root.addView(button("Export selected audio file") {
-            if (audioUri == null) report("Open an audio file first.")
-            else startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "audio/*"
-                putExtra(Intent.EXTRA_TITLE, "dhivehi-audio-copy")
-            }, exportAudioCode)
-        })
-        root.addView(caption("This prototype does not generate speech or download the model. Playback can be tested offline using existing audio files."))
-        val scroll = ScrollView(this)
-        scroll.addView(root)
-        setContentView(scroll)
+        describeSpeed()
+        button("Export recording as WAV file") { exportCurrent() }
+
+        heading("Saved recordings")
+        recordings = Spinner(this).apply { contentDescription = "Saved recordings" }
+        root.addView(recordings)
+        button("Open selected recording") { openSelected() }
+        button("Delete selected recording") { deleteSelected() }
+        button("Open another audio file") { pick("audio/*", REQ_AUDIO) }
+
+        setContentView(ScrollView(this).apply { addView(root) })
+        refreshRecordings(null)
+        handleShare(intent)
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
     }
 
-    private fun report(message: String) {
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleShare(intent)
+    }
+
+    /** Text shared from another app (Share > Dhivehi Offline TTS) goes into the editor. */
+    private fun handleShare(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND) return
+        val shared = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
+        editor.setText(shared.take(200_000))
+        say("Shared text received: ${shared.length} characters. Choose Generate speech.")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        app.listener = this
+        refreshModel()
+        onJobChanged(app.job)
+        status.text = app.lastStatus.ifEmpty { status.text }
+    }
+
+    override fun onPause() {
+        if (app.listener === this) app.listener = null
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacks(tick)
+        player?.release(); player = null
+        super.onDestroy()
+    }
+
+    // ------------------------------------------------------------------ status
+
+    private fun say(message: String) {
         status.text = message
         status.announceForAccessibility(message)
     }
 
-    private fun pickFile(type: String, code: Int) {
-        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            this.type = type
-        }, code)
+    override fun onStatus(message: String, announce: Boolean) {
+        status.text = message
+        if (announce) status.announceForAccessibility(message)
     }
 
-    private fun play() {
-        val uri = audioUri ?: return report("Open an audio file first.")
-        try {
-            if (player == null) {
-                player = MediaPlayer().apply {
-                    setDataSource(this@MainActivity, uri)
-                    prepare()
-                    setOnCompletionListener { report("Playback complete") }
+    override fun onJobChanged(job: TtsApp.Job) {
+        val busy = job != TtsApp.Job.NONE
+        cancelButton.visibility = if (busy) View.VISIBLE else View.GONE
+        cancelButton.text = when (job) {
+            TtsApp.Job.DOWNLOAD -> "Cancel download"
+            TtsApp.Job.GENERATE, TtsApp.Job.LOAD -> "Cancel speech generation"
+            TtsApp.Job.NONE -> "Cancel"
+        }
+        downloadButton.isEnabled = !busy
+        deleteModelButton.isEnabled = !busy
+        generateButton.isEnabled = !busy
+        if (!busy) refreshModel()
+    }
+
+    override fun onModelChanged() = refreshModel()
+
+    override fun onRecordingReady(file: File) {
+        refreshRecordings(file)
+        load(file)
+    }
+
+    private fun refreshModel() {
+        val m = app.models.installedManifest()
+        val installed = app.models.installedDir() != null
+        modelInfo.text = when {
+            installed && m != null -> "Voice model installed: version ${m.version}, ${ModelRepository.gb(app.models.installedSizeBytes())} on this phone. Speech is generated offline."
+            installed -> "Voice model installed."
+            app.models.hasPartialDownload() -> "The voice model download is incomplete. Choose Download voice model to continue."
+            else -> "No voice model installed. The voice model must be downloaded once (internet needed); after that everything works offline."
+        }
+        deleteModelButton.visibility = if (installed || app.models.hasPartialDownload()) View.VISIBLE else View.GONE
+        updateButton.visibility = if (installed) View.VISIBLE else View.GONE
+        downloadButton.text = if (installed) "Download voice model update" else "Download voice model"
+        generateButton.text = if (installed) "Generate speech" else "Generate speech (download the voice model first)"
+    }
+
+    // ------------------------------------------------------------------ model
+
+    private fun confirmDownload() {
+        say("Checking the download size…")
+        Thread {
+            val result = try { Result.success(app.models.fetchManifest()) } catch (e: Exception) { Result.failure(e) }
+            runOnUiThread {
+                result.onFailure { say(it.message ?: "Could not reach the download server.") }
+                result.onSuccess { m ->
+                    val remaining = app.models.remainingBytes(m)
+                    val free = app.models.freeBytes()
+                    AlertDialog.Builder(this)
+                        .setTitle("Download voice model")
+                        .setMessage("Voice model version ${m.version}, ${ModelRepository.gb(m.totalSize)} in total, " +
+                            "${ModelRepository.gb(remaining)} still to download. Free storage on this phone: ${ModelRepository.gb(free)}. " +
+                            "Use Wi-Fi if possible. The download continues if you leave the app.")
+                        .setPositiveButton("Download") { _, _ -> app.startDownload() }
+                        .setNegativeButton("Not now", null)
+                        .show()
                 }
             }
-            player?.start()
-            player?.let { it.playbackParams = it.playbackParams.setSpeed((speed.progress + 5) / 10f) }
-            report("Playing audio")
+        }.start()
+    }
+
+    private fun confirmDelete() {
+        AlertDialog.Builder(this)
+            .setTitle("Delete voice model")
+            .setMessage("Delete the voice model from this phone? You will need to download it again to generate speech. Saved recordings are kept.")
+            .setPositiveButton("Delete") { _, _ -> app.deleteModel { say("Voice model deleted.") } }
+            .setNegativeButton("Keep", null)
+            .show()
+    }
+
+    // ------------------------------------------------------------------ generation
+
+    private fun generate() {
+        if (app.models.installedDir() == null) {
+            say("No voice model is installed. Choose Download voice model first.")
+            return
+        }
+        stopPlayback()
+        val speaker = voices.checkedRadioButtonId - 1000
+        app.generate(editor.text.toString(), speaker, speakerNames[speaker])
+    }
+
+    // ------------------------------------------------------------------ playback
+
+    private fun load(file: File) {
+        stopPlayback()
+        player?.release(); player = null
+        currentFile = file; currentUri = null
+        nowPlaying.text = "Selected recording: ${file.nameWithoutExtension.replace('_', ' ')}"
+        preparePlayer { p -> p.setDataSource(file.path) }
+    }
+
+    private fun preparePlayer(source: (MediaPlayer) -> Unit) {
+        try {
+            player = MediaPlayer().apply {
+                source(this)
+                prepare()
+                setOnCompletionListener { playButton.text = "Play"; handler.removeCallbacks(tick); say("Playback finished") }
+            }
+            position.max = (player!!.duration / 1000).coerceAtLeast(1)
+            position.progress = 0
         } catch (e: Exception) {
-            player?.release()
-            player = null
-            report("Unable to play this audio file.")
+            player?.release(); player = null
+            say("This recording cannot be played.")
         }
     }
 
-    @Deprecated("Minimal prototype uses Activity result callbacks without external dependencies")
+    private fun togglePlay() {
+        val p = player ?: return say("No recording selected. Generate speech or open a saved recording first.")
+        if (p.isPlaying) {
+            p.pause(); playButton.text = "Play"; handler.removeCallbacks(tick); say("Paused")
+        } else {
+            applySpeed(p)
+            p.start(); playButton.text = "Pause"; handler.post(tick)
+        }
+    }
+
+    private fun applySpeed(p: MediaPlayer) {
+        try { p.playbackParams = p.playbackParams.setSpeed((speed.progress + 5) / 10f) } catch (e: Exception) {}
+    }
+
+    private fun describeSpeed() {
+        val v = (speed.progress + 5) / 10f
+        val text = "$v times"
+        if (Build.VERSION.SDK_INT >= 30) speed.stateDescription = text else speed.contentDescription = "Playback speed, $text"
+    }
+
+    private fun stopPlayback() {
+        player?.let { if (it.isPlaying) it.pause(); it.seekTo(0) }
+        playButton.text = "Play"
+        handler.removeCallbacks(tick)
+        position.progress = 0
+    }
+
+    private fun skip(ms: Int) {
+        val p = player ?: return say("No recording selected.")
+        val target = (p.currentPosition + ms).coerceIn(0, p.duration)
+        p.seekTo(target)
+        updatePosition()
+        say("Position ${fmt(target / 1000)} of ${fmt(p.duration / 1000)}")
+    }
+
+    private fun updatePosition() {
+        player?.let { position.progress = it.currentPosition / 1000 }
+    }
+
+    private fun fmt(seconds: Int) = if (seconds >= 60) "${seconds / 60} minutes ${seconds % 60} seconds" else "$seconds seconds"
+
+    // ------------------------------------------------------------------ recordings
+
+    private fun refreshRecordings(select: File?) {
+        recordingFiles = app.recordingsDir.listFiles { f -> f.extension == "wav" }?.sortedByDescending { it.lastModified() } ?: emptyList()
+        val labels = if (recordingFiles.isEmpty()) listOf("No saved recordings")
+            else recordingFiles.map { f ->
+                val secs = ((f.length() - 44) / 48000).toInt()
+                f.nameWithoutExtension.replace('_', ' ') + ", " + fmt(secs)
+            }
+        recordings.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
+        select?.let { s -> recordingFiles.indexOf(s).takeIf { it >= 0 }?.let { recordings.setSelection(it) } }
+    }
+
+    private fun selected(): File? = recordingFiles.getOrNull(recordings.selectedItemPosition)
+
+    private fun openSelected() {
+        val f = selected() ?: return say("There are no saved recordings.")
+        load(f)
+        say("Recording opened. Choose Play to listen.")
+    }
+
+    private fun deleteSelected() {
+        val f = selected() ?: return say("There are no saved recordings.")
+        AlertDialog.Builder(this)
+            .setTitle("Delete recording")
+            .setMessage("Delete ${f.nameWithoutExtension.replace('_', ' ')}?")
+            .setPositiveButton("Delete") { _, _ ->
+                if (currentFile == f) { player?.release(); player = null; currentFile = null; nowPlaying.text = "No recording selected." }
+                f.delete(); refreshRecordings(null); say("Recording deleted.")
+            }
+            .setNegativeButton("Keep", null)
+            .show()
+    }
+
+    private fun exportCurrent() {
+        val f = currentFile ?: selected()
+        if (f == null && currentUri == null) return say("No recording to export. Generate speech first.")
+        if (f == null) return say("Only recordings generated by this app can be exported as WAV.")
+        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "audio/wav"
+            putExtra(Intent.EXTRA_TITLE, f.name)
+        }, REQ_EXPORT)
+        pendingExport = f
+    }
+
+    private var pendingExport: File? = null
+
+    private fun pick(type: String, code: Int) {
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE); this.type = type
+        }, code)
+    }
+
+    @Deprecated("Uses the platform activity result callback to avoid extra libraries")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         try {
             when (requestCode) {
-                importTxtCode -> {
-                    val txt = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use {
-                        it.readText()
-                    } ?: error("Cannot read text")
-                    require(txt.length <= 200_000) { "Text file too large" }
-                    editor.setText(txt)
-                    report("Dhivehi text imported. Speech generation is not yet available.")
+                REQ_TXT -> {
+                    val txt = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                        ?: error("Cannot read the file")
+                    require(txt.length <= 200_000) { "The text file is too large (more than 200,000 characters)." }
+                    editor.setText(txt.removePrefix("﻿"))
+                    say("Text imported: ${txt.length} characters.")
                 }
-                importAudioCode -> {
-                    player?.release()
-                    player = null
-                    audioUri = uri
-                    report("Audio selected. Activate Play to listen offline.")
+                REQ_AUDIO -> {
+                    stopPlayback(); player?.release(); player = null
+                    currentFile = null; currentUri = uri
+                    nowPlaying.text = "Selected: other audio file"
+                    preparePlayer { p -> p.setDataSource(this, uri) }
+                    say("Audio file opened. Choose Play to listen.")
                 }
-                exportAudioCode -> {
-                    val source = audioUri ?: error("No selected audio file")
-                    contentResolver.openInputStream(source).use { input ->
-                        contentResolver.openOutputStream(uri).use { output ->
-                            requireNotNull(input) { "Cannot read source" }
-                            requireNotNull(output) { "Cannot write destination" }
-                            input.copyTo(output)
-                        }
-                    }
-                    report("Audio copied to your selected destination in its original format.")
+                REQ_EXPORT -> {
+                    val src = pendingExport ?: return
+                    contentResolver.openOutputStream(uri)?.use { out -> src.inputStream().use { it.copyTo(out) } }
+                        ?: error("Cannot write to that location")
+                    say("Recording exported as a WAV file.")
                 }
             }
         } catch (e: Exception) {
-            report("File operation failed: ${e.message ?: "Unknown error"}")
+            say("File operation failed: ${e.message ?: "unknown error"}")
         }
     }
 
-    override fun onDestroy() {
-        player?.release()
-        player = null
-        super.onDestroy()
+    companion object {
+        private const val REQ_TXT = 101
+        private const val REQ_AUDIO = 102
+        private const val REQ_EXPORT = 103
     }
 }

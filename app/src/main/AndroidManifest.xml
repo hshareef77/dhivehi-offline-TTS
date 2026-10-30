@@ -1,11 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:label="Dhivehi Offline TTS" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:supportsRtl="true">
-        <activity android:name="com.hshareef77.dhivehiofflinetts.MainActivity" android:exported="true">
+    <!-- Internet is only used to download the voice model; speech is generated offline. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <application
+        android:name="com.hshareef77.dhivehiofflinetts.TtsApp"
+        android:label="Dhivehi Offline TTS"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:allowBackup="false"
+        android:supportsRtl="true">
+        <activity
+            android:name="com.hshareef77.dhivehiofflinetts.MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+        <service
+            android:name="com.hshareef77.dhivehiofflinetts.KeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

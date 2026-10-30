@@ -32,9 +32,11 @@ def main():
     ap.add_argument("--report", default=None)
     args = ap.parse_args()
 
-    from transformers import AutoTokenizer, CsmForConditionalGeneration
+    from transformers import AutoTokenizer
 
-    model = CsmForConditionalGeneration.from_pretrained(args.model, dtype=torch.float32).eval()
+    from export_csm_onnx import load_model
+
+    model = load_model(args.model)
     try:
         tok = AutoTokenizer.from_pretrained(args.model)
         ids = prompt_tokens(tok, args.speaker, args.text)

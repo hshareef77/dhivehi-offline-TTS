@@ -1,0 +1,144 @@
+name: Convert voice model
+# Converts alakxender/csm-1b-dhivehi-5-spk-gd into the on-device ONNX package, validates it
+# (parity with Hugging Face, real Dhivehi speech for all five speakers, speech-recogniser
+# intelligibility, Kotlin engine) and publishes it to the Hugging Face Hub.
+#
+# Needs the repository secret HF_TOKEN: a Hugging Face access token with WRITE permission
+# from an account that has accepted the model's terms on its Hugging Face page.
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload the verified package to the Hugging Face Hub
+        type: boolean
+        default: true
+  push:
+    paths:
+      - 'conversion/**'
+      - '.github/workflows/convert-model.yml'
+concurrency:
+  group: convert-model
+  cancel-in-progress: true
+permissions:
+  contents: read
+env:
+  SOURCE_MODEL: alakxender/csm-1b-dhivehi-5-spk-gd
+  TARGET_REPO: Hshareef77/csm-1b-dhivehi-5spk-onnx
+  WORK: /mnt/work
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - name: Check Hugging Face token
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "::error::Repository secret HF_TOKEN is missing. Create a Hugging Face WRITE token and add it under Settings > Secrets and variables > Actions as HF_TOKEN. Also accept the terms on https://huggingface.co/alakxender/csm-1b-dhivehi-5-spk-gd"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - name: Free disk space and add swap
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo mkdir -p $WORK && sudo chown $USER $WORK
+          sudo swapoff -a || true
+          sudo fallocate -l 20G /mnt/swapfile && sudo chmod 600 /mnt/swapfile && sudo mkswap /mnt/swapfile && sudo swapon /mnt/swapfile
+          df -h / /mnt; free -g
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Install conversion tools
+        run: |
+          pip install --index-url https://download.pytorch.org/whl/cpu torch==2.15.0
+          pip install transformers==5.22.0 onnx==1.23.2 onnxruntime==1.31.1 onnxscript safetensors tokenizers \
+            huggingface_hub soundfile scipy numpy
+      - name: Download the original checkpoint (6.6 GB)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python - <<'EOF'
+          import os, sys
+          from huggingface_hub import snapshot_download
+          from huggingface_hub.errors import GatedRepoError
+          try:
+              snapshot_download(os.environ["SOURCE_MODEL"], local_dir=os.environ["WORK"] + "/hf")
+          except GatedRepoError:
+              sys.exit("::error::Access denied. Open https://huggingface.co/alakxender/csm-1b-dhivehi-5-spk-gd while logged in to the account of HF_TOKEN and accept the terms.")
+          EOF
+          du -sh $WORK/hf
+      - name: Export fp32 ONNX graphs
+        working-directory: conversion
+        run: python export_csm_onnx.py --model $WORK/hf --out $WORK/fp32 --depth-head-dtype float32
+      - name: Parity with Hugging Face (greedy, fp32)
+        working-directory: conversion
+        run: python verify_parity.py --model $WORK/hf --onnx $WORK/fp32 --frames 12 --min-match 0.9 --report $WORK/parity.json
+      - name: Re-export depth decoder with fp16 codebook heads (shipping version)
+        working-directory: conversion
+        run: python export_csm_onnx.py --model $WORK/hf --out $WORK/fp32 --skip backbone mimi emb tok
+      - name: Quantize (4-bit and 8-bit variants)
+        working-directory: conversion
+        run: |
+          VERSION=${{ github.run_number }}
+          python quantize_package.py --src $WORK/fp32 --out $WORK/q4 --backbone-bits 4 --depth-bits 4 --version $VERSION --name csm-1b-dhivehi-q4
+          python quantize_package.py --src $WORK/fp32 --out $WORK/q8 --backbone-bits 8 --depth-bits 8 --version $VERSION --name csm-1b-dhivehi-q8
+      - name: Generate Dhivehi speech and measure intelligibility
+        id: eval
+        working-directory: conversion
+        run: |
+          python evaluate_quality.py --tokenizer-json $WORK/hf/tokenizer.json --out $WORK/eval \
+            --package fp32=$WORK/fp32 --package q8=$WORK/q8 --package q4=$WORK/q4 --choose q4,q8,fp32
+          cat $WORK/eval/quality_report.md >> $GITHUB_STEP_SUMMARY
+      - name: Kotlin engine on the real model (tokenizer + generation parity, all speakers)
+        run: |
+          PKG=$WORK/${{ steps.eval.outputs.chosen }}
+          [ "${{ steps.eval.outputs.chosen }}" = "fp32" ] && PKG=$WORK/q8
+          cd conversion && python make_reference.py --package $PKG --tokenizer-json $WORK/hf/tokenizer.json --out $WORK/ref --frames 6 && cd ..
+          gradle -p engine test -Dcsm.model.dir=$PKG -Dcsm.reference.dir=$WORK/ref -Dcsm.output.dir=$WORK/eval/kotlin --stacktrace
+      - name: Collect reports and samples
+        if: always()
+        run: |
+          mkdir -p report
+          cp $WORK/parity.json $WORK/eval/*.md $WORK/eval/*.json report/ 2>/dev/null || true
+          cp $WORK/eval/*.wav report/ 2>/dev/null || true
+          cp -r $WORK/eval/kotlin report/ 2>/dev/null || true
+          cp $WORK/q4/manifest.json report/manifest-q4.json 2>/dev/null || true
+          cp $WORK/q8/manifest.json report/manifest-q8.json 2>/dev/null || true
+          cp engine/build/test-results/test/*.xml report/ 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: voice-model-report
+          path: report/
+      - name: Publish to Hugging Face Hub
+        if: github.event_name == 'push' || inputs.publish
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          CHOSEN: ${{ steps.eval.outputs.chosen }}
+        run: |
+          [ "$CHOSEN" = "fp32" ] && { echo "::error::Quantized packages failed the quality check; not publishing."; exit 1; }
+          PKG=$WORK/$CHOSEN
+          cp conversion/MODEL_CARD.md $PKG/README.md
+          cp $WORK/eval/quality_report.md $PKG/quality_report.md
+          python - <<'EOF'
+          import os
+          from huggingface_hub import HfApi
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          repo = os.environ["TARGET_REPO"]
+          api.create_repo(repo, repo_type="model", exist_ok=True, private=False)
+          pkg = os.environ["WORK"] + "/" + os.environ["CHOSEN"]
+          # manifest.json last, so the app never sees a manifest whose files are not uploaded yet
+          api.upload_folder(repo_id=repo, folder_path=pkg, ignore_patterns=["manifest.json", "tokenizer/tokenizer_info.json"],
+                            commit_message="Upload converted voice model files")
+          api.upload_file(repo_id=repo, path_or_fileobj=pkg + "/manifest.json", path_in_repo="manifest.json",
+                          commit_message="Publish manifest")
+          print("Published to https://huggingface.co/" + repo)
+          EOF

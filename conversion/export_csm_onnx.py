@@ -193,6 +193,19 @@ def write_config(model, out, gen_cfg):
         json.dump(conf, f, indent=1)
 
 
+def load_model(path):
+    """Loads the checkpoint in fp32 and fails loudly if any weight was not loaded."""
+    from transformers import CsmForConditionalGeneration
+
+    model, info = CsmForConditionalGeneration.from_pretrained(path, dtype=torch.float32, output_loading_info=True)
+    missing = [k for k in info.get("missing_keys", []) if "embed_tokens" not in k or "depth_decoder" not in k]
+    if missing:
+        raise SystemExit(f"Checkpoint weights were not loaded (would export random weights): {sorted(missing)[:20]}")
+    if info.get("unexpected_keys"):
+        print("  note: unused checkpoint keys:", sorted(info["unexpected_keys"])[:10])
+    return model.eval()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True, help="local directory of the HF checkpoint")
@@ -202,10 +215,7 @@ def main():
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
-    from transformers import CsmForConditionalGeneration
-
-    model = CsmForConditionalGeneration.from_pretrained(args.model, dtype=torch.float32)
-    model.eval()
+    model = load_model(args.model)
     gen_path = os.path.join(args.model, "generation_config.json")
     gen_cfg = json.load(open(gen_path)) if os.path.exists(gen_path) else {}
 
@@ -231,6 +241,7 @@ def main():
         model.codec_model = None
         model.depth_decoder = None
         model.embed_text_tokens = None
+        model.backbone_model.embed_tokens = None
         export_backbone(model, args.out)
     print("Done.")
 
