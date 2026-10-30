@@ -25,6 +25,9 @@ env:
   SOURCE_MODEL: alakxender/csm-1b-dhivehi-5-spk-gd
   TARGET_REPO: Hshareef77/csm-1b-dhivehi-5spk-onnx
   WORK: /mnt/work
+  PIP_NO_CACHE_DIR: '1'
+  PYTHONUNBUFFERED: '1'
+  HF_XET_CHUNK_CACHE_SIZE_BYTES: '0'
 jobs:
   convert:
     runs-on: ubuntu-latest
@@ -41,11 +44,25 @@ jobs:
       - uses: actions/checkout@v4
       - name: Free disk space and add swap
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          # This job does not build Android. Remove preinstalled SDKs and tool caches
+          # before setup-python/setup-java restore only the versions needed below.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost \
+            /usr/share/swift /usr/local/.ghcup /usr/local/share/powershell /opt/az /opt/microsoft \
+            /usr/local/lib/node_modules /opt/google /usr/share/miniconda /opt/pipx
+          sudo apt-get clean
+          rm -rf "$HOME/.cache/pip" "$HOME/.cache/huggingface/xet"
           sudo mkdir -p $WORK && sudo chown $USER $WORK
           sudo swapoff -a || true
           sudo fallocate -l 20G /mnt/swapfile && sudo chmod 600 /mnt/swapfile && sudo mkswap /mnt/swapfile && sudo swapon /mnt/swapfile
-          df -h / /mnt; free -g
+          df -h / /mnt
+          free -g
+          # Fail with a usable log instead of losing the runner when its disk fills.
+          AVAILABLE_KB=$(df --output=avail "$WORK" | tail -1)
+          if [ "$AVAILABLE_KB" -lt 31457280 ]; then
+            sudo du -xhd1 /opt /usr/local /usr/share 2>/dev/null | sort -h | tail -30
+            echo "::error::At least 30 GiB of free space is required after allocating swap."
+            exit 1
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
