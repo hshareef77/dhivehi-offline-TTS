@@ -31,9 +31,10 @@ TOKENIZER_CASES = [
     "\u00a0\u00a0ބަސް \u2009 ",
 ]
 
-GEN_CASES = [
-    ("ދިވެހިރާއްޖެ އަކީ ރީތި ޤައުމެކެވެ.", 0),
-    ("މާލެ އަކީ ވެރިރަށެވެ.", 3),
+GEN_CASES = [  # (text, speaker, codebooks)
+    ("ދިވެހިރާއްޖެ އަކީ ރީތި ޤައުމެކެވެ.", 0, 32),
+    ("މާލެ އަކީ ވެރިރަށެވެ.", 3, 32),
+    ("މާލެ އަކީ ވެރިރަށެވެ.", 1, 16),
 ]
 
 
@@ -54,12 +55,15 @@ def main():
     pipe = CsmOnnx(args.package)
     cfg = pipe.cfg
     refs = []
-    for n, (text, spk) in enumerate(GEN_CASES):
+    variable = pipe.mimi.get_inputs()[0].shape[1] != 32
+    for n, (text, spk, ncb) in enumerate(GEN_CASES):
+        if ncb != 32 and not variable:
+            continue
         ids = [cfg["bos_token_id"]] + tok.encode(f"[{spk}]{text}", add_special_tokens=False).ids + [cfg["eos_token_id"]]
-        frames = pipe.generate_frames(ids, args.frames, Sampler(greedy=True))
+        frames = pipe.generate_frames(ids, args.frames, Sampler(greedy=True), codebooks=ncb)
         audio = pipe.decode(frames)
         write_wav(os.path.join(args.out, f"ref_{n}.wav"), audio, cfg["sample_rate"])
-        refs.append({"text": text, "speaker": spk, "prompt_ids": ids, "frames": frames, "samples": int(len(audio))})
+        refs.append({"text": text, "speaker": spk, "codebooks": ncb, "prompt_ids": ids, "frames": frames, "samples": int(len(audio))})
         print(f"case {n}: {len(ids)} prompt tokens, {len(frames)} frames, {len(audio)} samples")
     json.dump(refs, open(os.path.join(args.out, "reference.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 

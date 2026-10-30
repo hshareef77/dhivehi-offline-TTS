@@ -121,7 +121,7 @@ def export_depth(model, out, head_dtype):
 def export_mimi(model, out):
     dec = MimiDecode(model.codec_model).eval()
     codes = torch.randint(0, 2048, (1, model.config.num_codebooks, 20), dtype=torch.long)
-    export(dec, (codes,), ["codes"], ["audio"], {"codes": {2: "frames"}, "audio": {1: "samples"}},
+    export(dec, (codes,), ["codes"], ["audio"], {"codes": {1: "codebooks", 2: "frames"}, "audio": {1: "samples"}},
            os.path.join(out, "mimi_decoder.onnx"))
 
 

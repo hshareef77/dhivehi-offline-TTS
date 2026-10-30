@@ -100,7 +100,7 @@ class CsmOnnx:
             e += self.audio.row(c * self.vocab + int(t))
         return e
 
-    def generate_frames(self, token_ids, max_frames, sampler, depth_sampler=None, on_frame=None):
+    def generate_frames(self, token_ids, max_frames, sampler, depth_sampler=None, on_frame=None, codebooks=None):
         depth_sampler = depth_sampler or sampler
         b = self.cfg["backbone"]
         d = self.cfg["depth_decoder"]
@@ -114,13 +114,14 @@ class CsmOnnx:
             codes = [c0]
             dpast = self._empty_past(d["layers"], d["kv_heads"], d["head_dim"])
             dinp = np.stack([hidden, self.depth_emb.row(c0)])
-            for cb in range(1, self.ncb):
+            ncb = codebooks or self.ncb
+            for cb in range(1, ncb):
                 dout = self._run(self.depth, dinp, dpast)
                 dlogits, dpast = dout[0][0], dout[1:]
                 tok = depth_sampler(dlogits)
                 codes.append(tok)
                 dinp = self.depth_emb.row(cb * self.vocab + tok)[None]
-            if all(c == self.cfg["codebook_eos_token_id"] for c in codes[:-1]):
+            if all(c == self.cfg["codebook_eos_token_id"] for c in codes[: min(len(codes), self.ncb - 1)]):
                 break
             frames.append(codes)
             if on_frame:

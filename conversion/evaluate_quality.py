@@ -8,7 +8,7 @@ quality cost of quantization.
 
 Usage:
   python conversion/evaluate_quality.py --tokenizer-json hf/tokenizer.json --out eval \
-      --package fp32=build/fp32 --package q4=build/q4 [--choose q4,q8,fp32 --max-cer-increase 0.08]
+      --package fp32=build/fp32 --package q4=build/q4 --package q4-cb16=build/q4@16 [--choose q4,q8,fp32 --max-cer-increase 0.08]
 """
 
 import argparse
@@ -75,6 +75,11 @@ def main():
     report = {}
     for spec in args.package:
         name, path = spec.split("=", 1)
+        # "dir@16" evaluates the package generating only the first 16 codebooks (speed setting)
+        codebooks = None
+        if "@" in path:
+            path, cb = path.rsplit("@", 1)
+            codebooks = int(cb)
         pipe = CsmOnnx(path, threads=args.threads)
         cfg = pipe.cfg
         rows = []
@@ -82,7 +87,8 @@ def main():
             for n, text in enumerate(SENTENCES):
                 ids = [cfg["bos_token_id"]] + tok.encode(f"[{spk}]{text}", add_special_tokens=False).ids + [cfg["eos_token_id"]]
                 t0 = time.time()
-                frames = pipe.generate_frames(ids, 30 + int(len(text) * 1.6), Sampler(seed=1000 * spk + n))
+                frames = pipe.generate_frames(ids, 30 + int(len(text) * 1.6), Sampler(seed=1000 * spk + n),
+                                              codebooks=codebooks)
                 gen_t = time.time() - t0
                 audio = pipe.decode(frames)
                 if not len(audio):

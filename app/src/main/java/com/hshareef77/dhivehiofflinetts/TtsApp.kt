@@ -195,7 +195,12 @@ class TtsApp : Application() {
     /** Stops speech that is playing while generating. */
     fun stopLivePlayback() { live?.stop(); live = null }
 
-    fun generate(text: String, speaker: Int, speakerName: String, speakWhileGenerating: Boolean = false, speed: Float = 1f) {
+    /** True when the installed model supports the faster speed settings (fewer codebooks). */
+    @Volatile var fasterSettingsSupported: Boolean? = null
+        private set
+
+    fun generate(text: String, speaker: Int, speakerName: String, speakWhileGenerating: Boolean = false, speed: Float = 1f,
+                 codebooks: Int = 32) {
         if (text.isBlank()) { status("Please enter some Dhivehi text first.", true); return }
         if (!begin(Job.GENERATE)) return
         worker.execute {
@@ -203,6 +208,10 @@ class TtsApp : Application() {
             val out = File(recordingsDir, "${stamp}_voice${speaker + 1}.wav")
             try {
                 val eng = ensureEngine()
+                fasterSettingsSupported = eng.supportsFewerCodebooks
+                if (codebooks < 32 && !eng.supportsFewerCodebooks) {
+                    status("The faster speed settings need the voice model update. Using best quality.", true)
+                }
                 if (speakWhileGenerating) live = LivePlayer(eng.config.sampleRate, speed)
                 val started = System.currentTimeMillis()
                 var lastAnnounceAt = 0L
@@ -227,10 +236,10 @@ class TtsApp : Application() {
                         if (index < count - 1) live?.enqueue(FloatArray(eng.config.sampleRate / 4))
                     }
                     override fun isCancelled() = cancel.get()
-                })
+                }, codebooks = codebooks)
                 live?.finish(); live = null
                 val took = (System.currentTimeMillis() - started) / 1000.0
-                status("Speech ready: %.0f seconds of audio, generated in %.0f seconds. Choose Play to listen.".format(result.seconds, took), true)
+                status("Speech ready: %.0f seconds of audio, generated in %.0f seconds. Choose Play to listen.".format(Locale.US, result.seconds, took), true)
                 main.post { listener?.onRecordingReady(out) }
             } catch (e: GenerationCancelledException) {
                 out.delete()

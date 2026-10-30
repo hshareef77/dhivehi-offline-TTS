@@ -120,7 +120,8 @@ jobs:
         working-directory: conversion
         run: |
           python evaluate_quality.py --tokenizer-json $WORK/hf/tokenizer.json --out $WORK/eval \
-            --package fp32=$WORK/fp32 --package q8=$WORK/q8 --package q4=$WORK/q4 --choose q4,q8,fp32
+            --package fp32=$WORK/fp32 --package q8=$WORK/q8 --package q4=$WORK/q4 \
+            --package q4-cb24=$WORK/q4@24 --package q4-cb16=$WORK/q4@16 --choose q4,q8,fp32
           cat $WORK/eval/quality_report.md >> $GITHUB_STEP_SUMMARY
       - name: Kotlin engine on the real model (tokenizer + generation parity, all speakers)
         run: |

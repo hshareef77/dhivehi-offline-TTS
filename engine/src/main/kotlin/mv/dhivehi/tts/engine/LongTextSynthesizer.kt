@@ -21,14 +21,15 @@ class LongTextSynthesizer(private val engine: CsmEngine) {
         listener: LongTextListener? = null,
         seed: Long = System.nanoTime(),
         pauseSeconds: Float = 0.25f,
+        codebooks: Int? = null,
     ): Result {
-        val segments = TextSegmenter.split(text)
+        val segments = TextSegmenter.split(DhivehiNumbers.normalize(text))
         require(segments.isNotEmpty()) { "There is no text to speak." }
         val sr = engine.config.sampleRate
         WavWriter(output, sr).use { wav ->
             segments.forEachIndexed { i, seg ->
                 listener?.onSegmentStart(i, segments.size, seg)
-                val audio = engine.synthesize(seg, speaker, GenerationOptions(seed = seed + i), object : GenerationListener {
+                val audio = engine.synthesize(seg, speaker, GenerationOptions(seed = seed + i, codebooks = codebooks), object : GenerationListener {
                     override fun onFrame(frames: Int, maxFrames: Int) { listener?.onFrame(i, segments.size, frames, maxFrames) }
                     override fun isCancelled() = listener?.isCancelled() == true
                 })

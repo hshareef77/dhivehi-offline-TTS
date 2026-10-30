@@ -23,6 +23,12 @@ data class GenerationOptions(
     val topK: Int? = null,
     val seed: Long = System.nanoTime(),
     val greedy: Boolean = false,
+    /**
+     * How many of the 32 Mimi codebooks to generate. Fewer = faster (each codebook is one
+     * depth-decoder step per 80 ms frame) with less fine acoustic detail. Needs a model
+     * package whose Mimi decoder accepts a variable number of codebooks.
+     */
+    val codebooks: Int? = null,
 )
 
 /**
@@ -62,6 +68,10 @@ class CsmEngine(val modelDir: File, threads: Int = 4) : Closeable {
 
     val speakers: List<Speaker> get() = config.speakers
 
+    /** True when the installed Mimi decoder accepts fewer than 32 codebooks (newer packages). */
+    val supportsFewerCodebooks: Boolean =
+        ((mimi.inputInfo["codes"]?.info as? ai.onnxruntime.TensorInfo)?.shape?.getOrNull(1) ?: 32L) < 0L
+
     fun promptTokens(text: String, speaker: Int): List<Int> =
         listOf(config.bosTokenId) + tokenizer.encode("[$speaker]$text") + listOf(config.eosTokenId)
 
@@ -85,7 +95,9 @@ class CsmEngine(val modelDir: File, threads: Int = 4) : Closeable {
         val depthSampler = Sampler(options.temperature ?: config.depthTemperature, options.topK ?: config.depthTopK,
             options.seed xor 0x5DEECE66DL, options.greedy)
         val h = config.hiddenSize
-        val ncb = config.numCodebooks
+        val ncb = (options.codebooks ?: config.numCodebooks).coerceIn(1, config.numCodebooks)
+            .let { if (supportsFewerCodebooks) it else config.numCodebooks }
+        val eosCheck = minOf(ncb, config.numCodebooks - 1)
         val vocab = config.audioVocabSize
 
         val frames = ArrayList<IntArray>()
@@ -126,7 +138,7 @@ class CsmEngine(val modelDir: File, threads: Int = 4) : Closeable {
                 }
 
                 var allEos = true
-                for (c in 0 until ncb - 1) if (codes[c] != config.codebookEos) { allEos = false; break }
+                for (c in 0 until eosCheck) if (codes[c] != config.codebookEos) { allEos = false; break }
                 if (allEos) break
                 frames.add(codes)
                 listener?.onFrame(frames.size, maxFrames)
@@ -144,7 +156,7 @@ class CsmEngine(val modelDir: File, threads: Int = 4) : Closeable {
     /** Decodes frames to 24 kHz mono float audio in [-1, 1]. */
     fun decode(frames: List<IntArray>): FloatArray {
         if (frames.isEmpty()) return FloatArray(0)
-        val ncb = config.numCodebooks
+        val ncb = frames[0].size
         val f = frames.size
         val buf = LongBuffer.allocate(ncb * f)
         for (c in 0 until ncb) for (t in 0 until f) buf.put(frames[t][c].coerceIn(0, 2047).toLong())

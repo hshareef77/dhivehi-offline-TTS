@@ -89,6 +89,13 @@ def main():
     ox_audio = pipe.decode(hf_frames_c)
     mimi_err = float(np.abs(ref_audio - ox_audio).max()) if len(hf_frames) else 0.0
     print(f"Mimi decoder: {len(ox_audio)} samples, max abs diff vs HF {mimi_err:.2e}")
+    # Fewer codebooks (speed setting): same graph, first 16 codebooks only
+    with torch.no_grad():
+        ref16 = model.codec_model.decode(codes[:, :16]).audio_values[0, 0].numpy()
+    ox16 = pipe.mimi.run(None, {"codes": np.array(hf_frames_c, dtype=np.int64).T[None, :16]})[0][0]
+    mimi16_err = float(np.abs(ref16 - ox16).max()) if len(hf_frames) else 0.0
+    print(f"Mimi decoder, 16 codebooks: max abs diff vs HF {mimi16_err:.2e}")
+    mimi_err = max(mimi_err, mimi16_err)
 
     q8 = CsmOnnx(args.onnx, load_mimi=False)
     q8_frames = q8.generate_frames(ids, args.frames, Sampler(greedy=True, valid=None))

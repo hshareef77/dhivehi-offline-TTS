@@ -34,6 +34,14 @@ class MainActivity : Activity(), TtsApp.Listener {
     private lateinit var deleteModelButton: Button
     private lateinit var generateButton: Button
     private lateinit var speakLive: CheckBox
+    private lateinit var speedQuality: RadioGroup
+
+    /** Label and number of Mimi codebooks generated (fewer = faster, less fine detail). */
+    private val qualityChoices = listOf(
+        "Best quality (slowest)" to 32,
+        "Balanced (faster)" to 24,
+        "Fastest (less natural sound)" to 16,
+    )
     private lateinit var playButton: Button
     private lateinit var position: SeekBar
     private lateinit var speed: SeekBar
@@ -115,6 +123,15 @@ class MainActivity : Activity(), TtsApp.Listener {
         voices.check(1000 + getPreferences(MODE_PRIVATE).getInt("speaker", 0))
         voices.setOnCheckedChangeListener { _, id -> getPreferences(MODE_PRIVATE).edit().putInt("speaker", id - 1000).apply() }
         root.addView(voices)
+
+        heading("Speed and quality")
+        speedQuality = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL; contentDescription = "Speed and quality" }
+        qualityChoices.forEachIndexed { i, (label, _) ->
+            speedQuality.addView(RadioButton(this).apply { id = 2000 + i; text = label; textSize = 18f })
+        }
+        speedQuality.check(2000 + getPreferences(MODE_PRIVATE).getInt("quality", 0).coerceIn(0, qualityChoices.size - 1))
+        speedQuality.setOnCheckedChangeListener { _, id -> getPreferences(MODE_PRIVATE).edit().putInt("quality", id - 2000).apply() }
+        root.addView(speedQuality)
 
         heading("Speech")
         speakLive = CheckBox(this).apply {
@@ -313,7 +330,8 @@ class MainActivity : Activity(), TtsApp.Listener {
         }
         stopPlayback()
         val speaker = voices.checkedRadioButtonId - 1000
-        app.generate(editor.text.toString(), speaker, speakerNames[speaker], speakLive.isChecked, (speed.progress + 5) / 10f)
+        val codebooks = qualityChoices[(speedQuality.checkedRadioButtonId - 2000).coerceIn(0, qualityChoices.size - 1)].second
+        app.generate(editor.text.toString(), speaker, speakerNames[speaker], speakLive.isChecked, (speed.progress + 5) / 10f, codebooks)
     }
 
     // ------------------------------------------------------------------ playback

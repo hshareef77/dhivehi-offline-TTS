@@ -43,7 +43,10 @@ class CsmEngineTest {
                 assertEquals(ids, engine.promptTokens(text, speaker), "prompt ids")
                 val refFrames = r.getJSONArray("frames")
                 val t0 = System.nanoTime()
-                val frames = engine.generateFrames(text, speaker, GenerationOptions(maxFrames = refFrames.length(), greedy = true))
+                val codebooks = r.optInt("codebooks", 32)
+                val frames = engine.generateFrames(text, speaker,
+                    GenerationOptions(maxFrames = refFrames.length(), greedy = true, codebooks = codebooks))
+                assertEquals(codebooks, frames[0].size, "codebooks per frame")
                 val secs = (System.nanoTime() - t0) / 1e9
                 assertEquals(refFrames.length(), frames.size, "frame count")
                 var same = 0

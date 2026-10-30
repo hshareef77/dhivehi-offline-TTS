@@ -183,3 +183,21 @@ measures the real-time factor on the GitHub CPU.
 3. Measure phone speed, memory, heat, and stability. If needed, tune threads and execution
    providers in the order specified in the handoff; do not reduce quality without consent.
 4. Optional future scope: Android `TextToSpeechService` and Dhivehi number normalisation.
+
+## Update: numbers, speed setting, smaller model updates
+
+* **Numbers are read aloud.** `engine/.../DhivehiNumbers.kt` writes digits out as Dhivehi
+  words before generation: 11 → އެގާރަ, 2025 → ދެހާސް ފަންސަވީސް, 3.5 → ތިނެއް ޕޮއިންޓް ފަހެއް,
+  50% → ފަންސާސް އިންސައްތަ, 1,500 → ހާސް ފަސްސަތޭކަ. Numbers with a leading zero or more
+  than 12 digits are read digit by digit. Arabic-Indic digits are converted. The word lists
+  sit in one place for correction by a native speaker (please report any wrong word).
+* **Speed and quality setting.** Best quality (32 codebooks), Balanced (24), Fastest (16).
+  Each codebook is one depth-decoder step per 80 ms frame; that decoder is about three
+  quarters of the computing. Expected time saved: about 20% (24) and 40% (16). The Mimi
+  decoder now accepts any number of codebooks from 1 to 32 in the same file; it matches
+  Hugging Face decoding for 32 and 16 codebooks (max difference 2·10⁻⁶). Kotlin and Python
+  agree exactly with 16 codebooks. The conversion run measures speech-recogniser error and
+  speed for 32/24/16 (`q4`, `q4-cb24`, `q4-cb16` in quality_report.md).
+* **Model updates reuse unchanged files.** Files whose SHA-256 is unchanged are linked from the
+  installed model instead of downloaded, so this update should fetch only the new Mimi decoder
+  (about 230 MB), provided the other exported files are byte-identical.

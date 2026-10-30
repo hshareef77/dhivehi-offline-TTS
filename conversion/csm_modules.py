@@ -157,7 +157,11 @@ class DepthStep(nn.Module):
 
 
 class MimiDecode(nn.Module):
-    """codes [1, 32, F] int64 -> audio [1, F * 1920] float32 at 24 kHz.
+    """codes [1, N, F] int64 (1 <= N <= 32) -> audio [1, F * 1920] float32 at 24 kHz.
+
+    Mimi is a residual vector quantizer: the latent is the sum of one embedding per
+    codebook. Decoding only the first N codebooks therefore works with the same graph;
+    N < 32 trades fine acoustic detail for speed (fewer depth-decoder steps).
 
     Re-implements the decoder transformer's forward (sliding-window causal attention with
     rotary embeddings) with an explicit mask, because the library's mask construction is
@@ -166,7 +170,13 @@ class MimiDecode(nn.Module):
 
     def __init__(self, codec):
         super().__init__()
-        self.quantizer = codec.quantizer
+        q = codec.quantizer
+        sem, ac = q.semantic_residual_vector_quantizer, q.acoustic_residual_vector_quantizer
+        assert q.num_semantic_quantizers == 1
+        tables = [l.codebook.embed.detach().float() for l in list(sem.layers) + list(ac.layers)]
+        self.register_buffer("codebooks", torch.stack(tables), persistent=True)  # [32, 2048, 256]
+        self.sem_proj = sem.output_proj
+        self.ac_proj = ac.output_proj
         dec = getattr(codec, "decoder", None)
         if dec is not None and hasattr(dec, "decoder_transformer"):  # transformers >= 5
             self.upsample, tf, self.seanet = dec.upsample, dec.decoder_transformer, dec.decoder_seanet
@@ -193,8 +203,16 @@ class MimiDecode(nn.Module):
         out = torch.matmul(torch.softmax(scores, dim=-1), v).transpose(1, 2).reshape(b, t, -1)
         return attn.o_proj(out)
 
+    def quantizer_decode(self, codes):
+        n = codes.shape[1]
+        idx = torch.arange(n)[:, None]  # [N, 1]
+        emb = self.codebooks[:n][idx, codes[0]]  # [N, F, 256]
+        sem = self.sem_proj(emb[0].transpose(0, 1)[None])  # [1, 512, F]
+        ac = self.ac_proj(emb[1:].sum(0).transpose(0, 1)[None])
+        return sem + ac
+
     def forward(self, codes):
-        latents = self.quantizer.decode(codes)
+        latents = self.quantizer_decode(codes)
         h = self.upsample(latents).transpose(1, 2)
         t = h.shape[1]
         pos = torch.arange(t, dtype=torch.float32)

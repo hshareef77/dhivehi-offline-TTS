@@ -69,11 +69,20 @@ class ModelRepository(context: Context, private val baseUrl: String) {
     fun freeBytes(): Long = StatFs(root.apply { mkdirs() }.path).availableBytes
 
     /** Bytes still to download for this manifest, counting partial files already present. */
+    /** An identical file (same path, size and SHA-256) in the installed model, reusable on update. */
+    private fun reusable(f: ModelFile): File? {
+        val dir = installedDir() ?: return null
+        val old = installedManifest()?.files?.firstOrNull { it.path == f.path } ?: return null
+        if (old.sha256 != f.sha256 || old.size != f.size) return null
+        return File(dir, f.path).takeIf { it.exists() && it.length() == f.size }
+    }
+
     fun remainingBytes(m: Manifest): Long = m.files.sumOf { f ->
         val part = File(staging, f.path + ".part")
         val done = File(staging, f.path)
         when {
             done.exists() && done.length() == f.size -> 0L
+            reusable(f) != null -> 0L
             part.exists() -> (f.size - part.length()).coerceAtLeast(0)
             else -> f.size
         }
@@ -97,6 +106,12 @@ class ModelRepository(context: Context, private val baseUrl: String) {
             val target = File(staging, f.path)
             if (target.exists() && target.length() == f.size) continue
             target.parentFile?.mkdirs()
+            val old = reusable(f)
+            if (old != null) {
+                // Unchanged file from the installed model: link it (no extra storage) instead of downloading.
+                try { android.system.Os.link(old.path, target.path) } catch (e: Exception) { old.copyTo(target, overwrite = true) }
+                continue
+            }
             val part = File(staging, f.path + ".part")
             done = downloadFile(f, part, done, m.totalSize, progress)
             progress.onProgress(done, m.totalSize, "Checking ${f.path}")
