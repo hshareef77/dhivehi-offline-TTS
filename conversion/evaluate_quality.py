@@ -16,6 +16,7 @@ import json
 import os
 import re
 import time
+import unicodedata
 
 import numpy as np
 from tokenizers import Tokenizer
@@ -30,7 +31,10 @@ SENTENCES = [
 
 
 def normalize(t):
-    t = re.sub(r"[^\w\s]", " ", t)
+    # Thaana fili are combining marks; removing them hides vowel errors.
+    t = unicodedata.normalize("NFC", t)
+    t = "".join(c if c.isalnum() or c == "_" or c.isspace()
+                or unicodedata.category(c).startswith("M") else " " for c in t)
     return re.sub(r"\s+", " ", t).strip()
 
 
@@ -66,7 +70,7 @@ def main():
         from transformers import pipeline
         asr = pipeline("automatic-speech-recognition", model=args.asr, device="cpu")
     except Exception as e:
-        print("ASR unavailable, CER will not be measured:", e)
+        raise RuntimeError("Dhivehi recogniser could not load; refusing unmeasured quality evaluation") from e
 
     report = {}
     for spec in args.package:
@@ -81,6 +85,8 @@ def main():
                 frames = pipe.generate_frames(ids, 30 + int(len(text) * 1.6), Sampler(seed=1000 * spk + n))
                 gen_t = time.time() - t0
                 audio = pipe.decode(frames)
+                if not len(audio):
+                    raise RuntimeError(f"{name} speaker {spk} sentence {n}: empty speech output")
                 total_t = time.time() - t0
                 secs = len(audio) / cfg["sample_rate"]
                 wav = os.path.join(args.out, f"{name}_speaker{spk}_s{n}.wav")
@@ -95,6 +101,8 @@ def main():
                 rows.append(row)
                 print(name, row, flush=True)
         cers = [r["cer"] for r in rows if "cer" in r]
+        if len(cers) != len(rows) or not cers or not np.isfinite(cers).all():
+            raise RuntimeError(f"{name}: missing or invalid CER scores; refusing publication")
         report[name] = {
             "rows": rows,
             "mean_cer": round(float(np.mean(cers)), 3) if cers else None,
@@ -107,11 +115,13 @@ def main():
     chosen = None
     if args.choose:
         base = report.get(args.baseline, {}).get("mean_cer")
+        if base is None or not np.isfinite(base):
+            raise RuntimeError("Baseline CER is missing or invalid; refusing publication")
         for name in args.choose.split(","):
             r = report.get(name)
             if r is None:
                 continue
-            if base is None or r["mean_cer"] is None or r["mean_cer"] <= base + args.max_cer_increase:
+            if r["mean_cer"] is not None and np.isfinite(r["mean_cer"]) and r["mean_cer"] <= base + args.max_cer_increase:
                 chosen = name
                 break
         chosen = chosen or args.baseline
