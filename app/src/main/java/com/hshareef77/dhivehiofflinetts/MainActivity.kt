@@ -33,6 +33,7 @@ class MainActivity : Activity(), TtsApp.Listener {
     private lateinit var updateButton: Button
     private lateinit var deleteModelButton: Button
     private lateinit var generateButton: Button
+    private lateinit var speakLive: CheckBox
     private lateinit var playButton: Button
     private lateinit var position: SeekBar
     private lateinit var speed: SeekBar
@@ -116,12 +117,19 @@ class MainActivity : Activity(), TtsApp.Listener {
         root.addView(voices)
 
         heading("Speech")
+        speakLive = CheckBox(this).apply {
+            text = "Speak each part as soon as it is ready"
+            textSize = 18f
+            isChecked = getPreferences(MODE_PRIVATE).getBoolean("live", true)
+            setOnCheckedChangeListener { _, on -> getPreferences(MODE_PRIVATE).edit().putBoolean("live", on).apply() }
+        }
+        root.addView(speakLive)
         generateButton = button("Generate speech") { generate() }
 
         heading("Playback")
         nowPlaying = info("No recording selected.")
         playButton = button("Play") { togglePlay() }
-        button("Stop") { stopPlayback(); say("Stopped") }
+        button("Stop") { stopPlayback(); app.stopLivePlayback(); say("Stopped") }
         button("Back 10 seconds") { skip(-10_000) }
         button("Forward 10 seconds") { skip(10_000) }
         info("Position in recording")
@@ -237,6 +245,7 @@ class MainActivity : Activity(), TtsApp.Listener {
         load(file)
     }
 
+
     private fun refreshModel() {
         val m = app.models.installedManifest()
         val installed = app.models.installedDir() != null
@@ -294,7 +303,7 @@ class MainActivity : Activity(), TtsApp.Listener {
         }
         stopPlayback()
         val speaker = voices.checkedRadioButtonId - 1000
-        app.generate(editor.text.toString(), speaker, speakerNames[speaker])
+        app.generate(editor.text.toString(), speaker, speakerNames[speaker], speakLive.isChecked, (speed.progress + 5) / 10f)
     }
 
     // ------------------------------------------------------------------ playback

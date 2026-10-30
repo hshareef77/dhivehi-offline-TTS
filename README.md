@@ -41,6 +41,7 @@ verified and what still needs testing on a real phone, and
   (model speaker ids 0–4).
 * Generate speech locally; long text is split into sentences and generated part by part.
 * Cancel generation; progress is announced (at most every 15 seconds).
+* Optional "speak each part as soon as it is ready" for long texts.
 * Play, pause, stop, back/forward 10 seconds, position slider, speed 0.5×–2.0×.
 * Recordings are saved automatically; open, delete, or export them as WAV files.
 * Voice model manager: shows size and free storage, downloads in the background with

@@ -109,11 +109,11 @@ measures the real-time factor on the GitHub CPU.
 
 ## Known limitations and risks
 
-* **Speed** is the main risk: generation is expected to be slower than real time. The app
-  generates the whole text, then plays it; it does not yet play part 1 while generating part 2.
-  If speed is unacceptable, the next steps are: play while generating (the engine already
-  reports each finished part), ONNX Runtime XNNPACK or NNAPI execution providers, and fewer
-  threads to avoid big/little core contention.
+* **Speed** is the main risk: generation is expected to be slower than real time. With
+  "Speak each part as soon as it is ready" (on by default) the first sentence plays as soon
+  as it is generated while later sentences are generated, with pauses between parts when
+  generation is slower than speech. Next options if speed is unacceptable: ONNX Runtime
+  XNNPACK or NNAPI execution providers, and thread tuning for big/little cores.
 * Each sentence is generated independently (no audio context), so voice timbre can vary
   slightly between sentences.
 * Numbers, abbreviations and Latin text are read however the model learned them; there is no

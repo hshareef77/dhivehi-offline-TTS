@@ -175,7 +175,12 @@ class TtsApp : Application() {
         return CsmEngine(dir, threads).also { engine = it }
     }
 
-    fun generate(text: String, speaker: Int, speakerName: String) {
+    @Volatile private var live: LivePlayer? = null
+
+    /** Stops speech that is playing while generating. */
+    fun stopLivePlayback() { live?.stop(); live = null }
+
+    fun generate(text: String, speaker: Int, speakerName: String, speakWhileGenerating: Boolean = false, speed: Float = 1f) {
         if (text.isBlank()) { status("Please enter some Dhivehi text first.", true); return }
         if (!begin(Job.GENERATE)) return
         worker.execute {
@@ -183,6 +188,7 @@ class TtsApp : Application() {
             val out = File(recordingsDir, "${stamp}_voice${speaker + 1}.wav")
             try {
                 val eng = ensureEngine()
+                if (speakWhileGenerating) live = LivePlayer(eng.config.sampleRate, speed)
                 val started = System.currentTimeMillis()
                 var lastAnnounceAt = 0L
                 val result = LongTextSynthesizer(eng).synthesizeToWav(text, speaker, out, object : LongTextListener {
@@ -201,8 +207,13 @@ class TtsApp : Application() {
                         if (announce) lastAnnounceAt = now
                         status(msg, announce)
                     }
+                    override fun onSegmentAudio(index: Int, count: Int, audio: FloatArray) {
+                        live?.enqueue(audio)
+                        if (index < count - 1) live?.enqueue(FloatArray(eng.config.sampleRate / 4))
+                    }
                     override fun isCancelled() = cancel.get()
                 })
+                live?.finish(); live = null
                 val took = (System.currentTimeMillis() - started) / 1000.0
                 status("Speech ready: %.0f seconds of audio, generated in %.0f seconds. Choose Play to listen.".format(result.seconds, took), true)
                 main.post { listener?.onRecordingReady(out) }
@@ -220,6 +231,7 @@ class TtsApp : Application() {
                 if (e is ai.onnxruntime.OrtException) closeEngine()
                 status("Speech generation failed: ${e.message ?: e.javaClass.simpleName}", true)
             } finally {
+                if (cancel.get()) stopLivePlayback() else { live?.finish(); live = null }
                 end()
             }
         }
