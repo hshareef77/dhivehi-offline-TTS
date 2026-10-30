@@ -17,7 +17,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      # The ubuntu runner image already contains the Android SDK (ANDROID_HOME); AGP installs
+      # any missing platform/build-tools itself.
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
