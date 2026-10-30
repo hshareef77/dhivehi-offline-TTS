@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.hussainshareef.dhivehiofflinetts.BuildConfig
 import mv.dhivehi.tts.engine.CsmEngine
 import mv.dhivehi.tts.engine.GenerationCancelledException
 import mv.dhivehi.tts.engine.LongTextListener
