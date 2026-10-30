@@ -79,6 +79,11 @@ measures the real-time factor on the GitHub CPU.
    (Thaana, fili, English, digits, punctuation, emoji, whitespace), using a byte-level BPE
    trained with the exact Llama 3 pre-tokenizer settings.
 5. Text segmentation, WAV writing and top-k sampling: unit tests.
+6. Export parity holds with both transformers 5.22 and 4.57; 4.57 uses the source
+   checkpoint's own key layout. The conversion workflow falls back to 4.57 automatically.
+7. **APK build:** GitHub Actions compiles and signs the app (run 15: engine tests passed,
+   debug APK about 30 MB, artifact `dhivehi-offline-tts-apk`). Every future build is signed
+   with the same committed key, so updates install in place.
 
 ## Verified by CI once `HF_TOKEN` is added (Convert voice model workflow)
 
