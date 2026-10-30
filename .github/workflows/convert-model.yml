@@ -58,9 +58,9 @@ jobs:
           free -g
           # Fail with a usable log instead of losing the runner when its disk fills.
           AVAILABLE_KB=$(df --output=avail "$WORK" | tail -1)
-          if [ "$AVAILABLE_KB" -lt 31457280 ]; then
+          if [ "$AVAILABLE_KB" -lt 26214400 ]; then
             sudo du -xhd1 /opt /usr/local /usr/share 2>/dev/null | sort -h | tail -30
-            echo "::error::At least 30 GiB of free space is required after allocating swap."
+            echo "::error::At least 25 GiB of free space is required after allocating swap."
             exit 1
           fi
       - uses: actions/setup-python@v5
