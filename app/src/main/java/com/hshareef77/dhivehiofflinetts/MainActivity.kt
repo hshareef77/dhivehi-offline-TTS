@@ -100,8 +100,8 @@ class MainActivity : Activity() {
             if (audioUri == null) report("Open an audio file first.")
             else startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
-                type = "audio/wav"
-                putExtra(Intent.EXTRA_TITLE, "dhivehi-audio.wav")
+                type = "audio/*"
+                putExtra(Intent.EXTRA_TITLE, "dhivehi-audio-copy")
             }, exportAudioCode)
         })
         root.addView(caption("This prototype does not generate speech or download the model. Playback can be tested offline using existing audio files."))
