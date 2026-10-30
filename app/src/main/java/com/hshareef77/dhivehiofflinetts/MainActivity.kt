@@ -65,8 +65,8 @@ class MainActivity : Activity() {
             adapter = ArrayAdapter(
                 this@MainActivity,
                 android.R.layout.simple_spinner_dropdown_item,
-                listOf("Female speaker 1", "Male speaker 1",
-                       "Female speaker 2", "Male speaker 2", "Female speaker 3")
+                listOf("Speaker 0 — Female", "Speaker 1 — Male",
+                       "Speaker 2 — Female", "Speaker 3 — Male", "Speaker 4 — Male (verify quality)")
             )
         }
         column.addView(voice)
