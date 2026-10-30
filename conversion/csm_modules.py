@@ -173,8 +173,10 @@ class MimiDecode(nn.Module):
         else:  # transformers 4.x
             self.upsample, tf, self.seanet = codec.upsample, codec.decoder_transformer, codec.decoder
         self.layers = tf.layers
-        self.register_buffer("inv_freq", tf.rotary_emb.inv_freq.detach().clone().float(), persistent=False)
-        self.attention_scaling = float(tf.rotary_emb.attention_scaling)
+        # transformers 5.x keeps one rotary embedding on the model, 4.x one per attention layer
+        rotary = getattr(tf, "rotary_emb", None) or tf.layers[0].self_attn.rotary_emb
+        self.register_buffer("inv_freq", rotary.inv_freq.detach().clone().float(), persistent=False)
+        self.attention_scaling = float(rotary.attention_scaling)
         cfg = tf.config
         self.window = cfg.sliding_window
         self.num_heads = cfg.num_attention_heads

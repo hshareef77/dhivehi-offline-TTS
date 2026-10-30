@@ -77,7 +77,15 @@ jobs:
           du -sh $WORK/hf
       - name: Export fp32 ONNX graphs
         working-directory: conversion
-        run: python export_csm_onnx.py --model $WORK/hf --out $WORK/fp32 --depth-head-dtype float32
+        run: |
+          # The checkpoint was saved with transformers 4.53; if 5.x cannot map every weight,
+          # the export stops (it never exports random weights) and we retry with 4.57.
+          if ! python export_csm_onnx.py --model $WORK/hf --out $WORK/fp32 --depth-head-dtype float32; then
+            echo "::warning::Retrying export with transformers 4.57.1"
+            pip install transformers==4.57.1
+            rm -rf $WORK/fp32
+            python export_csm_onnx.py --model $WORK/hf --out $WORK/fp32 --depth-head-dtype float32
+          fi
       - name: Parity with Hugging Face (greedy, fp32)
         working-directory: conversion
         run: python verify_parity.py --model $WORK/hf --onnx $WORK/fp32 --frames 12 --min-match 0.9 --report $WORK/parity.json

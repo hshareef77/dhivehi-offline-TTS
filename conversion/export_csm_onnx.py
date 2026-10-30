@@ -203,6 +203,16 @@ def load_model(path):
         raise SystemExit(f"Checkpoint weights were not loaded (would export random weights): {sorted(missing)[:20]}")
     if info.get("unexpected_keys"):
         print("  note: unused checkpoint keys:", sorted(info["unexpected_keys"])[:10])
+    # The checkpoint stores the shared audio-codebook embeddings once (under the depth decoder);
+    # make sure the backbone uses the same table.
+    bb = model.backbone_model.embed_tokens.embed_audio_tokens
+    dd = model.depth_decoder.model.embed_tokens
+    if not torch.equal(bb.weight, dd.weight):
+        if model.config.tie_codebooks_embeddings:
+            print("  tying backbone audio embeddings to the stored depth-decoder table")
+            bb.weight = dd.weight
+        else:
+            print("  note: backbone and depth-decoder audio embeddings are separate tables")
     return model.eval()
 
 
