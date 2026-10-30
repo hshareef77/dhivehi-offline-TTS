@@ -201,3 +201,17 @@ measures the real-time factor on the GitHub CPU.
 * **Model updates reuse unchanged files.** Files whose SHA-256 is unchanged are linked from the
   installed model instead of downloaded, so this update should fetch only the new Mimi decoder
   (about 230 MB), provided the other exported files are byte-identical.
+
+### Measured speed settings (conversion run 7, published as model version 7)
+
+| setting | codebooks | speech-recogniser CER | real-time factor, GitHub CPU | runaway segments (of 15) |
+|---|---|---|---|---|
+| Best quality | 32 | 0.103 | 6.59 | 0 |
+| Balanced | 24 | 0.069 | 5.56 | 0 |
+| Fastest | 16 | 0.085 | 4.39 | 1 |
+
+fp32 reference in the same run: CER 0.070. With 15 sampled sentences per row, CER
+differences of a few hundredths are within sampling noise, so the settings are similarly
+intelligible by this measure. Fastest had one sentence that did not end by itself and ran to
+the length limit. Only `mimi_decoder.onnx` and `mimi_decoder.onnx.data` changed from version 5
+(the other files have identical SHA-256), so the in-app update downloads about 228 MB.
