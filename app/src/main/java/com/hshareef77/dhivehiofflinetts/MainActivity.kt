@@ -172,6 +172,16 @@ class MainActivity : Activity(), TtsApp.Listener {
         button("Delete selected recording") { deleteSelected() }
         button("Open another audio file") { pick("audio/*", REQ_AUDIO) }
 
+        heading("Help")
+        button("Share error details") {
+            val report = app.lastErrorReport() ?: return@button say("No errors have been recorded.")
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "Dhivehi Offline TTS error details")
+                putExtra(Intent.EXTRA_TEXT, report)
+            }, "Share error details"))
+        }
+
         setContentView(ScrollView(this).apply { addView(root) })
         refreshRecordings(null)
         handleShare(intent)

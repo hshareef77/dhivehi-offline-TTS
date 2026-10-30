@@ -89,10 +89,17 @@ class BpeTokenizer(
     }
 
     companion object {
-        /** Llama 3 pre-tokenization pattern; \s must be Unicode-aware like the Rust implementation. */
+        /**
+         * Unicode White_Space, which is what \s means in the Rust regex used by Hugging Face.
+         * Spelled out because Java's \s is ASCII-only, and Android's regex engine rejects
+         * Pattern.UNICODE_CHARACTER_CLASS (it throws "Unsupported flags").
+         */
+        private const val WS = "\\t\\n\\x0B\\f\\r\\x20\\x85\\xA0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000"
+
+        /** Llama 3 pre-tokenization pattern with \s / \S written as explicit classes. */
         val PRE_TOKENIZER: Pattern = Pattern.compile(
-            "(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\\r\\n\\p{L}\\p{N}]?\\p{L}+|\\p{N}{1,3}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+",
-            Pattern.UNICODE_CHARACTER_CLASS,
+            "(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\\r\\n\\p{L}\\p{N}]?\\p{L}+|\\p{N}{1,3}| ?[^$WS\\p{L}\\p{N}]+[\\r\\n]*" +
+                "|[$WS]*[\\r\\n]+|[$WS]+(?![^$WS])|[$WS]+",
         )
 
         private fun pairKey(a: Int, b: Int): Long = (a.toLong() shl 32) or (b.toLong() and 0xffffffffL)

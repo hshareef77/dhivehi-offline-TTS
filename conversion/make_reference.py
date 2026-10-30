@@ -27,6 +27,8 @@ TOKENIZER_CASES = [
     "   leading and trailing spaces   ",
     "ޝުކުރިއްޔާ 🙂 emoji and ﷲ ligature",
     "'S 'll 'RE apostrophes don't",
+    "ދިވެހި\u00a0ބަސް\u3000text\u2028line\u2003em  \u00a0 \nend",
+    "\u00a0\u00a0ބަސް \u2009 ",
 ]
 
 GEN_CASES = [

@@ -114,6 +114,7 @@ class TtsApp : Application() {
             } catch (e: ModelRepository.UserFacingException) {
                 status(e.message ?: "Download failed.", true)
             } catch (e: Exception) {
+                recordError("download", e)
                 status("Download failed: ${e.message ?: e.javaClass.simpleName}. Choose Download voice model to try again.", true)
             } finally {
                 end()
@@ -175,6 +176,20 @@ class TtsApp : Application() {
         return CsmEngine(dir, threads).also { engine = it }
     }
 
+    private val errorFile: File by lazy { File(filesDir, "last_error.txt") }
+
+    /** Keeps technical details of the last failure so the user can share them for support. */
+    private fun recordError(what: String, e: Throwable) {
+        try {
+            val sw = java.io.StringWriter()
+            e.printStackTrace(java.io.PrintWriter(sw))
+            errorFile.writeText("Dhivehi Offline TTS ${BuildConfig.VERSION_NAME} (${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE})\n" +
+                "Failed during: $what\nModel: ${models.installedManifest()?.let { "version ${it.version}" } ?: "none"}\n\n$sw")
+        } catch (_: Exception) {}
+    }
+
+    fun lastErrorReport(): String? = errorFile.takeIf { it.exists() }?.readText()
+
     @Volatile private var live: LivePlayer? = null
 
     /** Stops speech that is playing while generating. */
@@ -227,9 +242,10 @@ class TtsApp : Application() {
                 out.delete(); closeEngine()
                 status("The phone ran out of memory while generating. Close other apps and try a shorter text.", true)
             } catch (e: Throwable) {
+                recordError("generation", e)
                 out.delete()
                 if (e is ai.onnxruntime.OrtException) closeEngine()
-                status("Speech generation failed: ${e.message ?: e.javaClass.simpleName}", true)
+                status("Speech generation failed: ${e.message ?: e.javaClass.simpleName}. You can send the details with Share error details, in the Help section.", true)
             } finally {
                 if (cancel.get()) stopLivePlayback() else { live?.finish(); live = null }
                 end()
