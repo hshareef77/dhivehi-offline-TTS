@@ -2,14 +2,58 @@
 
 ## Summary
 
-The complete offline speech pipeline for CSM-1B Dhivehi is implemented: model conversion,
-quantization, an on-device Kotlin inference engine on ONNX Runtime, the voice-model
-downloader and the accessible Android app. The pipeline has been verified on a
-random-weight CSM model with the real architecture. The **real model has not yet been
-converted**: this development environment cannot reach Hugging Face. The conversion
-workflow runs on GitHub Actions and needs the `HF_TOKEN` secret (see
-[INSTALL_AND_TEST.md](INSTALL_AND_TEST.md), section 1). Until it has run, the app correctly
-reports that no voice model is published, and it cannot speak yet.
+The real model has now been converted, validated, and published. Successful conversion run:
+https://github.com/hshareef77/dhivehi-offline-TTS/actions/runs/41018337742
+(source commit `55092e6ba8c51a8b4d564c5fb231eb8488612f57` on `ccr-e6a84a0a-pdlhzq`).
+The public download is `Hshareef77/csm-1b-dhivehi-5spk-onnx`, manifest version **5**,
+package **csm-1b-dhivehi-q4**, with all five speakers. Files were uploaded first and the
+manifest last. The app can now download the real voice package.
+
+## Measured real-model validation (30 October 2026)
+
+- Download size: **1,443,314,430 bytes** (1.443 GB / 1.344 GiB), 12 verified package files.
+- Original-model greedy parity: 12 frames, token match **1.0000**, codebook-0 match **1.0000**.
+- Mimi audio parity: maximum absolute difference **3.8743e-7** (limit 1e-3).
+- Int8 embedding greedy match against dense embeddings: **0.705729** (informational;
+  autoregressive greedy trajectories can diverge). Real speech quality is measured below.
+- Kotlin tokenizer: 9 cases identical to Hugging Face tokenizers; both greedy reference
+  cases matched Python exactly (**1.0000**). Real-model engine tests passed, including
+  cancellation and two-sentence WAV generation for all five speakers.
+- All 45 quality samples produced audio and finite CER scores; no segment hit its frame limit.
+
+| evaluated package | mean character error rate | mean real-time factor, GitHub CPU | runaway segments |
+|---|---:|---:|---:|
+| fp32 baseline | 0.087 (8.7%) | 27.23 | 0 |
+| q8 | 0.060 (6.0%) | 15.25 | 0 |
+| q4, published | 0.067 (6.7%) | 11.17 | 0 |
+
+The q4 result is within the allowed 0.08 absolute CER increase over baseline, so the
+workflow selected q4. These are three sentences per voice with fixed sampling seeds,
+not a broad language benchmark. The baseline follows the existing pipeline: fp32
+MatMul weights, exported int8 embedding tables, and shipping fp16 depth heads. The
+recogniser used raw CTC because its optional KenLM decoder was unavailable; recognition
+scores are an objective proxy, not a listening assessment. No subjective listening
+check or real-phone test has been performed here.
+
+A real-time factor of 11.17 means about 11.17 seconds of computation per second of audio
+on this GitHub runner; this is **not** a Samsung Galaxy S23 FE speed measurement.
+Kotlin long-text runs produced 4.49–8.17 seconds of audio in 45.9–82.0 seconds.
+
+The `voice-model-report` artifact contains parity.json, both package manifests, the
+quality reports, 45 evaluation WAVs, five Kotlin WAVs, and passing test XML reports.
+
+### Conversion fixes made during this run
+
+1. The private-repository runner had only 7 GiB RAM and 13 GiB free disk after swap,
+   rather than the assumed 16 GiB RAM. Export exhausted its disk and prevented log upload.
+   Removing unused preinstalled SDKs/tool caches and disabling pip/Xet caches left
+   about 28 GiB free after 20 GiB swap; the workflow now requires at least 25 GiB free.
+2. CER normalization now preserves Thaana combining vowel marks. Missing recogniser
+   initialization, empty audio, and missing/non-finite CER now fail closed, rather than
+   allowing an unmeasured package to be selected. Local checks covered unchanged Thaana,
+   differing vowel marks, punctuation/whitespace, and Python syntax.
+3. Android package name, app/engine source, stable signing key, and all five speaker IDs
+   were preserved. Work remains on the requested branch; it has not been merged into main.
 
 ## Model architecture (as implemented)
 
@@ -41,7 +85,7 @@ untraceable mask construction. `conversion/csm_modules.py` re-implements the inf
 over the **same weight tensors**, with explicit KV-cache inputs and outputs, so the app drives
 the autoregressive loop itself.
 
-## Package layout and expected sizes
+## Package layout and original size estimates
 
 | file | precision | estimated size |
 |---|---|---|
@@ -60,7 +104,7 @@ tables are memory-mapped, so only the rows used are loaded. The KV cache is unde
 segment. This fits an 8 GB phone with a wide margin; the app refuses to load the model if
 Android reports less than 1.2 GB free and asks the user to close apps.
 
-**Speed:** not yet measured on a phone. Each 80 ms frame needs one backbone step (1B parameters)
+**Speed:** the actual GitHub CPU results are listed above; phone speed is not yet measured. Each 80 ms frame needs one backbone step (1B parameters)
 plus 31 depth-decoder steps (100M parameters). My estimate for the S23 FE CPU is 3–6 seconds of
 computing per second of speech, so a sentence takes several seconds. The CI quality report
 measures the real-time factor on the GitHub CPU.
@@ -85,7 +129,7 @@ measures the real-time factor on the GitHub CPU.
    debug APK about 30 MB, artifact `dhivehi-offline-tts-apk`). Every future build is signed
    with the same committed key, so updates install in place.
 
-## Verified by CI once `HF_TOKEN` is added (Convert voice model workflow)
+## Verified by the successful real-model CI run
 
 1. All checkpoint weights load. The run fails if any weight would be random.
 2. Prompt tokenization matches the model's own processor/chat template.
@@ -132,9 +176,10 @@ measures the real-time factor on the GitHub CPU.
 
 ## Continuation path
 
-1. Add `HF_TOKEN` and re-run **Convert voice model**. Read its quality report and listen to the
-   samples.
-2. Install the newest **Android APK** artifact and run the phone test list.
-3. Based on the measured speed: add playback during generation and tune threads/execution
-   providers.
-4. Optional: Android `TextToSpeechService` integration, and Dhivehi number normalisation.
+1. Install the fresh **Android APK** artifact built after model publication and follow
+   `docs/INSTALL_AND_TEST.md`, especially model download/resume, airplane mode, all five
+   voices, playback/export, long-text cancellation, and TalkBack/Jieshuo+ navigation.
+2. Listen to the published-model samples and assess quality on the phone.
+3. Measure phone speed, memory, heat, and stability. If needed, tune threads and execution
+   providers in the order specified in the handoff; do not reduce quality without consent.
+4. Optional future scope: Android `TextToSpeechService` and Dhivehi number normalisation.
