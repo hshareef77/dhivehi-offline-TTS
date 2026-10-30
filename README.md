@@ -6,6 +6,7 @@ Accessible Android Kotlin prototype for offline Dhivehi text-to-speech.
 - Initial Android project and accessible Thaana text editor.
 - Import UTF-8 TXT files using Android file picker.
 - Five voice selections reflecting the five-speaker online demo.
+- Import and play an existing audio file offline; pause, stop, change playback speed, and copy/export the original audio file (no WAV conversion).
 - Android GitHub Actions debug APK workflow.
 - **Speech generation is NOT implemented yet.** The user-tested CSM-1B Dhivehi model has not been demonstrated on 8 GB Android hardware, and there is no Android-native CSM runtime included.
 - No paid API or server connection in the prototype.
