@@ -15,7 +15,7 @@ android {
         // Where the converted voice model package (manifest.json + files) is published.
         buildConfigField("String", "MODEL_BASE_URL",
             "\"" + (System.getenv("MODEL_BASE_URL") ?: "https://huggingface.co/Hshareef77/omnivoice-dhivehi-onnx/resolve/main") + "\"")
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
     buildFeatures { buildConfig = true }
 

@@ -294,7 +294,7 @@ class MainActivity : Activity(), TtsApp.Listener {
             app.models.hasPartialDownload() -> "The voice model download is incomplete. Choose Download voice model to continue."
             else -> "OmniVoice requires a one-time download of about 1.37 GB, including voice cloning. Your previous CSM package will be replaced after the download passes verification. Saved recordings are kept."
         }
-        deleteModelButton.visibility = if (installed || app.models.hasPartialDownload()) View.VISIBLE else View.GONE
+        deleteModelButton.visibility = if (installed || app.models.hasPartialDownload() || app.models.hasLegacyModel()) View.VISIBLE else View.GONE
         updateButton.visibility = if (installed) View.VISIBLE else View.GONE
         downloadButton.text = if (installed) "Download voice model update" else "Download voice model"
         generateButton.text = if (installed) "Generate speech" else "Generate speech (download the voice model first)"

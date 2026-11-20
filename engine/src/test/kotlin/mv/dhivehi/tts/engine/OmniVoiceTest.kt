@@ -57,6 +57,14 @@ class OmniVoiceTest {
             assertTrue(audio.isNotEmpty() && audio.all { it.isFinite() } && audio.any { kotlin.math.abs(it) > 1e-6 })
             val out = File(reference, "kotlin_dhivehi.wav")
             WavWriter(out, 24000).use { it.write(audio) }
+            val cloneExpected = JSONObject(File(reference, "expected_clone_codes.json").readText())
+            val testVoice = OmniVoiceEngine.Voice.load(File(reference, "test_voice.json"))
+            val cloneCodes = engine.generateCodes(cloneExpected.getString("text"), testVoice, positionTemperature = 0.0)
+            val cloneArray = cloneExpected.getJSONArray("codes")
+            for (c in 0 until 8) {
+                val row = cloneArray.getJSONArray(c)
+                assertContentEquals(LongArray(row.length()) { row.getLong(it) }, cloneCodes[c], "Cloned codebook $c")
+            }
             println("Kotlin OmniVoice exact-code parity passed; ${audio.size / 24000.0} seconds of speech.")
         }
     }

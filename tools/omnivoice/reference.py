@@ -90,5 +90,16 @@ def main():
     (args.out/'expected_codes.json').write_text(json.dumps({'text':TEXT,'codes':codes.tolist()}))
     sf.write(args.out/'python_dhivehi.wav',audio,24000,subtype='PCM_16')
     (args.out/'reference_report.json').write_text(json.dumps(report,indent=2))
+    encoder_opts = ort.SessionOptions(); encoder_opts.intra_op_num_threads = 3
+    encoder = ort.InferenceSession(str(args.model/'encoder.onnx'),encoder_opts)
+    reference_audio = (np.sin(np.arange(78720)*.04)*.1).astype(np.float32)
+    voice_codes = encoder.run(None, {encoder.get_inputs()[0].name: reference_audio[None,None]})[0][0]
+    del encoder
+    voice = {'format':1,'text':'މިއަދު މޫސުން ރަނގަޅު.','codes':voice_codes.tolist(),'rms':float(np.sqrt(np.mean(reference_audio**2)))}
+    (args.out/'test_voice.json').write_text(json.dumps(voice,ensure_ascii=False))
+    clone_codes,clone_audio,clone_report=generate(args.model,voice=voice)
+    (args.out/'expected_clone_codes.json').write_text(json.dumps({'text':TEXT,'codes':clone_codes.tolist()}))
+    clone_report['reference_kind']='Synthetic sine wave for numerical pipeline verification only; not a voice-quality sample'
+    (args.out/'clone_report.json').write_text(json.dumps(clone_report,indent=2))
     print(json.dumps(report),flush=True)
 if __name__=='__main__':main()

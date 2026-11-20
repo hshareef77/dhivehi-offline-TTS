@@ -50,6 +50,8 @@ class ModelRepository(context: Context, private val baseUrl: String) {
         File(dir, "manifest.json").takeIf { it.exists() }?.let { parseManifest(it.readText()) }
     }
 
+    fun hasLegacyModel(): Boolean = installedDir() == null && root.listFiles()?.any { it.isDirectory && it.name.startsWith("v") } == true
+
     fun installedSizeBytes(): Long = installedDir()?.walkTopDown()?.filter { it.isFile }?.sumOf { it.length() } ?: 0L
 
     /** Fetches the published manifest. Throws UserFacingException with a clear message. */
@@ -191,7 +193,9 @@ class ModelRepository(context: Context, private val baseUrl: String) {
         if (dest.exists()) dest.deleteRecursively()
         File(staging, "manifest.json").writeText(m.json)
         if (!staging.renameTo(dest)) throw IOException("Could not install the voice model")
-        installedFile.writeText(JSONObject().put("dir", dirName).put("version", m.version).toString())
+        val pointer = File(root, "installed.json.tmp")
+        pointer.writeText(JSONObject().put("dir", dirName).put("version", m.version).toString())
+        if (!pointer.renameTo(installedFile)) throw IOException("Could not activate the new model")
         root.listFiles()?.forEach { if (it.isDirectory && it.name != dirName) it.deleteRecursively() }
     }
 
