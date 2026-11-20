@@ -34,14 +34,8 @@ class MainActivity : Activity(), TtsApp.Listener {
     private lateinit var deleteModelButton: Button
     private lateinit var generateButton: Button
     private lateinit var speakLive: CheckBox
-    private lateinit var speedQuality: RadioGroup
-
-    /** Label and number of Mimi codebooks generated (fewer = faster, less fine detail). */
-    private val qualityChoices = listOf(
-        "Best quality (slowest)" to 32,
-        "Balanced (faster)" to 24,
-        "Fastest (less natural sound)" to 16,
-    )
+    private lateinit var referenceText: EditText
+    private lateinit var importReferenceButton: Button
     private lateinit var playButton: Button
     private lateinit var position: SeekBar
     private lateinit var speed: SeekBar
@@ -57,7 +51,7 @@ class MainActivity : Activity(), TtsApp.Listener {
         override fun run() { updatePosition(); handler.postDelayed(this, 500) }
     }
 
-    private val speakerNames = listOf("Female voice 1", "Male voice 1", "Female voice 2", "Male voice 2", "Voice 5")
+    private val speakerNames = listOf("Automatic voice", "Saved reference voice")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -120,18 +114,33 @@ class MainActivity : Activity(), TtsApp.Listener {
         speakerNames.forEachIndexed { i, name ->
             voices.addView(RadioButton(this).apply { id = 1000 + i; text = name; textSize = 18f })
         }
-        voices.check(1000 + getPreferences(MODE_PRIVATE).getInt("speaker", 0))
-        voices.setOnCheckedChangeListener { _, id -> getPreferences(MODE_PRIVATE).edit().putInt("speaker", id - 1000).apply() }
+        voices.check(1000 + getPreferences(MODE_PRIVATE).getInt("omni_voice", 0).coerceIn(0, 1))
+        voices.setOnCheckedChangeListener { _, id -> getPreferences(MODE_PRIVATE).edit().putInt("omni_voice", id - 1000).apply() }
         root.addView(voices)
 
-        heading("Speed and quality")
-        speedQuality = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL; contentDescription = "Speed and quality" }
-        qualityChoices.forEachIndexed { i, (label, _) ->
-            speedQuality.addView(RadioButton(this).apply { id = 2000 + i; text = label; textSize = 18f })
+        heading("Clone a reference voice")
+        info("Optional: choose a clear 3 to 10 second WAV recording and enter its exact spoken words. Voice preparation and generation both run offline. A Dhivehi reference helps keep pronunciation and voice consistent.")
+        val refLabel = info("Exact words spoken in the reference recording")
+        referenceText = EditText(this).apply {
+            id = View.generateViewId()
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            minLines = 2; textSize = 20f
+            textDirection = View.TEXT_DIRECTION_FIRST_STRONG
         }
-        speedQuality.check(2000 + getPreferences(MODE_PRIVATE).getInt("quality", 0).coerceIn(0, qualityChoices.size - 1))
-        speedQuality.setOnCheckedChangeListener { _, id -> getPreferences(MODE_PRIVATE).edit().putInt("quality", id - 2000).apply() }
-        root.addView(speedQuality)
+        refLabel.labelFor = referenceText.id
+        root.addView(referenceText)
+        importReferenceButton = button("Import WAV and save reference voice") {
+            if (referenceText.text.isBlank()) say("Enter the exact words spoken in the recording first.")
+            else if (app.models.installedDir() == null) say("Download the OmniVoice model first.")
+            else pick("audio/*", REQ_REFERENCE)
+        }
+        button("Delete saved reference voice") {
+            AlertDialog.Builder(this).setTitle("Delete reference voice?")
+                .setMessage("Delete the saved reference voice? Generated recordings are kept.")
+                .setPositiveButton("Delete") { _, _ ->
+                    app.deleteReferenceVoice(); voices.check(1000); say("Reference voice deleted.")
+                }.setNegativeButton("Keep", null).show()
+        }
 
         heading("Speech")
         speakLive = CheckBox(this).apply {
@@ -262,6 +271,9 @@ class MainActivity : Activity(), TtsApp.Listener {
         downloadButton.isEnabled = !busy
         deleteModelButton.isEnabled = !busy
         generateButton.isEnabled = !busy
+        importReferenceButton.isEnabled = !busy
+        voices.isEnabled = !busy
+        updateButton.isEnabled = !busy
         if (!busy) refreshModel()
     }
 
@@ -277,10 +289,10 @@ class MainActivity : Activity(), TtsApp.Listener {
         val m = app.models.installedManifest()
         val installed = app.models.installedDir() != null
         modelInfo.text = when {
-            installed && m != null -> "Voice model installed: version ${m.version}, ${ModelRepository.gb(app.models.installedSizeBytes())} on this phone. Speech is generated offline."
+            installed && m != null -> "OmniVoice installed: version ${m.version}, ${ModelRepository.gb(app.models.installedSizeBytes())} on this phone. Speech is generated offline."
             installed -> "Voice model installed."
             app.models.hasPartialDownload() -> "The voice model download is incomplete. Choose Download voice model to continue."
-            else -> "No voice model installed. The voice model must be downloaded once (internet needed); after that everything works offline."
+            else -> "OmniVoice requires a one-time download of about 1.37 GB, including voice cloning. Your previous CSM package will be replaced after the download passes verification. Saved recordings are kept."
         }
         deleteModelButton.visibility = if (installed || app.models.hasPartialDownload()) View.VISIBLE else View.GONE
         updateButton.visibility = if (installed) View.VISIBLE else View.GONE
@@ -329,9 +341,9 @@ class MainActivity : Activity(), TtsApp.Listener {
             return
         }
         stopPlayback()
-        val speaker = voices.checkedRadioButtonId - 1000
-        val codebooks = qualityChoices[(speedQuality.checkedRadioButtonId - 2000).coerceIn(0, qualityChoices.size - 1)].second
-        app.generate(editor.text.toString(), speaker, speakerNames[speaker], speakLive.isChecked, (speed.progress + 5) / 10f, codebooks)
+        val reference = voices.checkedRadioButtonId == 1001
+        if (reference && !app.hasReferenceVoice()) { say("Import and save a reference voice first, or choose Automatic voice."); return }
+        app.generate(editor.text.toString(), reference, speakLive.isChecked, (speed.progress + 5) / 10f)
     }
 
     // ------------------------------------------------------------------ playback
@@ -461,6 +473,7 @@ class MainActivity : Activity(), TtsApp.Listener {
         val uri = data?.data ?: return
         try {
             when (requestCode) {
+                REQ_REFERENCE -> app.importReference(uri, referenceText.text.toString())
                 REQ_TXT -> {
                     val txt = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
                         ?: error("Cannot read the file")
@@ -491,5 +504,6 @@ class MainActivity : Activity(), TtsApp.Listener {
         private const val REQ_TXT = 101
         private const val REQ_AUDIO = 102
         private const val REQ_EXPORT = 103
+        private const val REQ_REFERENCE = 104
     }
 }

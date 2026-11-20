@@ -1,63 +1,26 @@
-# Installation and phone testing
+# Install and test OmniVoice
 
-## 1. One-time setup to publish the voice model (needs the repository owner)
+1. Install **Dhivehi-Offline-TTS-OmniVoice.apk** from the validated OmniVoice prerelease.
+   It uses the existing package name and stable signing key; do not uninstall to update.
+2. In the app choose **Download voice model**. The dialog states the exact total download
+   and free storage. The model is separate from the APK, approximately 1.37 GB.
+3. Download over Wi-Fi. Leaving the screen does not stop the download. Cancel and resume
+   are supported. Every model file must pass SHA-256 verification before installation.
+   The old CSM package is replaced after the new package is safely installed.
+4. Turn on airplane mode for the following tests.
+5. Select **Automatic voice**, enter a short Dhivehi sentence, then **Generate speech**.
+   Play and judge pronunciation. Report the displayed audio duration and generation time.
+6. To clone a voice, enter its exact spoken words under **Exact words spoken in the reference
+   recording**, then choose **Import WAV and save reference voice**. Use a clear 3–10 second
+   WAV containing one speaker, without music. This version supports PCM16/float WAV only.
+   After it is saved, select **Saved reference voice** and generate another short sentence.
+7. Try a paragraph. Generation reports part count and diffusion steps. Completed parts can
+   play while later parts are generated. Cancellation keeps completed sections in recordings.
+8. Test playback, seeking, speed, WAV export, reopening saved recordings and deleting them.
+9. Check that TalkBack/Jieshuo+ announce labels, selected voice and progress without losing
+   focus. Check that cancellation works and the app survives switching to another app.
+10. Report missing/repeated words, voice consistency, phone heating, crashes or slow output.
+    Use **Share error details** after a failure.
 
-The original model is gated on Hugging Face, and the converted package is published to your
-Hugging Face account, so the conversion workflow needs your Hugging Face access token.
-All steps work in a phone browser.
-
-1. Open https://huggingface.co/alakxender/csm-1b-dhivehi-5-spk-gd while logged in to your
-   Hugging Face account (Hshareef77) and accept the access conditions (approval is automatic).
-2. Open https://huggingface.co/settings/tokens, choose **Create new token**, token type
-   **Write**, name it for example `github-conversion`, create it and copy it.
-3. Open https://github.com/hshareef77/dhivehi-offline-TTS/settings/secrets/actions, choose
-   **New repository secret**, name `HF_TOKEN`, paste the token, **Add secret**.
-4. Open the **Actions** tab, workflow **Convert voice model**, open the most recent run and
-   choose **Re-run jobs** (or push any change under `conversion/`).
-
-The run takes about one to two hours. It downloads the 6.6 GB original once on GitHub's
-computer, converts it, checks it against the original model, generates Dhivehi speech with
-all five voices, measures intelligibility with a Dhivehi speech recogniser, checks the Kotlin
-engine on the real model, and uploads the verified package to
-`https://huggingface.co/Hshareef77/csm-1b-dhivehi-5spk-onnx`. The run's **voice-model-report**
-artifact contains the sample WAV files and the quality report.
-
-Your phone never downloads the original 6.6 GB model.
-
-## 2. Installing the app
-
-1. Open the **Actions** tab, workflow **Android APK**, the newest successful run, and download
-   the artifact **dhivehi-offline-tts-apk** (a zip containing the APK). Extract and install it.
-2. Builds from this version on are signed with a fixed key, so later APKs install over the
-   previous one without uninstalling. If an older prototype build is installed, Android may
-   refuse the first update because that build used a different, random key; uninstall the old
-   prototype once in that case.
-
-## 3. Phone test list (Samsung Galaxy S23 FE)
-
-Please report the result of each item.
-
-1. **Start and navigation**: TalkBack and Jieshuo+ read every heading, button, the text field
-   and the five voice options in a sensible order.
-2. **Download**: choose *Download voice model*. The dialog states the size (about 1.5 GB
-   expected) and free storage. Confirm. Progress is announced every 10 percent. Leave the app
-   and come back: the download continues.
-3. **Cancel and resume**: during the download choose *Cancel download*, then *Download voice
-   model* again: it should continue from where it stopped, not restart.
-4. **Install check**: after download the screen says *Voice model installed, version N*.
-5. **Offline**: switch on airplane mode for all following tests.
-6. **Short speech**: type or paste a Dhivehi sentence, choose *Female voice 1*, *Generate speech*.
-   Note: time until *Speech ready*, whether the speech is understandable.
-7. **All five voices**: repeat with each voice.
-8. **Playback**: Play, Pause, Play (resumes), Back 10 seconds, Forward 10 seconds, the position
-   slider, speed slider (0.5× to 2.0×), Stop.
-9. **Long text**: import a TXT file of several paragraphs. Generation proceeds part by part
-   with announcements. Try *Cancel speech generation* in the middle.
-10. **Export**: *Export recording as WAV file*, save to Downloads, and play it in another app.
-11. **Saved recordings**: close and reopen the app; open and delete a saved recording.
-12. **Stability**: generate several times in a row; report any crash, freezing, phone heating,
-    or the message about insufficient memory.
-13. **Delete model**: *Delete voice model*, confirm, check storage is freed.
-
-Useful numbers to report: download time, time to generate one sentence (seconds) and the
-length of the produced speech, and whether the phone becomes hot.
+This release is a phone test build. Hosted-demo speed does not establish phone speed.
+The voice model licence is non-commercial; see THIRD_PARTY_NOTICES.md.

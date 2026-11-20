@@ -1,0 +1,1 @@
+{"engine":"omnivoice","format_version":1,"sample_rate":24000,"frame_rate":25,"num_codebooks":8,"audio_vocab_size":1025,"audio_mask_id":1024,"language":"dv","default_steps":32,"guidance_scale":2.0,"t_shift":0.1,"layer_penalty_factor":5.0,"position_temperature":5.0,"license":"CC-BY-NC (upstream OmniVoice); see THIRD_PARTY_NOTICES.md"}

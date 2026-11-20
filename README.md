@@ -1,61 +1,55 @@
-# Dhivehi Offline TTS
+# Dhivehi Offline TTS — OmniVoice
 
-Accessible Android app that generates Dhivehi (Thaana) speech **on the phone, without
-internet**, using the five-speaker CSM-1B Dhivehi model
-([alakxender/csm-1b-dhivehi-5-spk-gd](https://huggingface.co/alakxender/csm-1b-dhivehi-5-spk-gd)).
-The voice model is downloaded once after installation; everything after that is offline.
-Built for TalkBack and Jieshuo+ users.
+Accessible native Kotlin Android app for Dhivehi speech generation and optional voice
+cloning. The active engine is now OmniVoice, replacing the earlier five-speaker CSM engine
+at the owner's request. Package name and stable signing key are preserved for updates.
 
-## How it works
+## Installation
 
-```
-Thaana text ─► Llama-3 BPE tokenizer (Kotlin) ─► "[speaker]text" prompt
-            ─► CSM backbone (1B, ONNX, 4-bit)  ─► codebook 0 of each 80 ms audio frame
-            ─► depth decoder (ONNX)            ─► codebooks 1..31 of the frame
-            ─► repeat until the model ends the sentence
-            ─► Mimi decoder (ONNX)             ─► 24 kHz audio ─► WAV / playback
-```
+Install the APK from the repository's **OmniVoice prerelease** after validation completes.
+The APK contains no model weights. Use **Download voice model** inside the app; the exact
+complete size and required free storage are shown before downloading (about 1.37 GB).
+Downloads resume, all files are SHA-256 checked, and installation replaces the old CSM
+package only after the new package is complete. Saved recordings are kept.
 
-* `conversion/` — Python scripts that convert the original 6.6 GB checkpoint into the
-  on-device package (ONNX graphs with explicit KV cache, int8 embedding tables, 4-bit
-  weight-only quantization, SHA-256 manifest), check parity against Hugging Face
-  Transformers, and measure intelligibility with a Dhivehi speech recogniser.
-* `engine/` — pure Kotlin speech engine on the ONNX Runtime Java API: tokenizer,
-  memory-mapped embeddings, sampling, generation loop, Mimi decoding, long-text
-  segmentation, WAV writer. The same code runs on Android and in JVM tests.
-* `app/` — the Android app: model download manager, background generation, playback,
-  export, saved recordings, accessibility.
-* `.github/workflows/` — `Android APK` builds the APK (and runs engine tests) on every push;
-  `Convert voice model` converts, validates and publishes the voice model package.
-
-## Status
-
-See [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md) for exactly what has been
-verified and what still needs testing on a real phone, and
-[docs/INSTALL_AND_TEST.md](docs/INSTALL_AND_TEST.md) for installation and the phone test list.
+After the download, generation and reference-voice preparation work in airplane mode.
+There is no Python runtime, paid speech API, or web view in the app.
 
 ## Features
 
-* Enter, paste, share-to-app, or import a UTF-8 TXT file of Dhivehi text.
-* Five voices: Female voice 1, Male voice 1, Female voice 2, Male voice 2, Voice 5
-  (model speaker ids 0–4).
-* Generate speech locally; long text is split into sentences and generated part by part.
-* Cancel generation; progress is announced (at most every 15 seconds).
-* Optional "speak each part as soon as it is ready" for long texts.
-* Play, pause, stop, back/forward 10 seconds, position slider, speed 0.5×–2.0×.
-* Recordings are saved automatically; open, delete, or export them as WAV files.
-* Voice model manager: shows size and free storage, downloads in the background with
-  resume, verifies every file's SHA-256 checksum, installs atomically, checks for
-  updates, deletes the model.
+- Enter, paste, share or import Dhivehi text. Numbers are expanded to Dhivehi words.
+- Automatic voice or a saved reference voice; these replace CSM's five fixed speaker IDs.
+- Clone a voice from a clear **3–10 second PCM16 or float WAV** and its exact transcript.
+  Mono/stereo WAV at 8–96 kHz is converted locally to mono 24 kHz. MP3 is not supported
+  for reference import in this version.
+- Long text is split at sentence/clause/word boundaries with a bounded audio duration per
+  section. Sections are written incrementally into one WAV; cancelling keeps completed audio.
+- Optional playback of sections while later sections generate, progress, cancellation,
+  playback controls, saved recordings and WAV export.
+- Standard accessible Android controls and labelled fields for TalkBack/Jieshuo+.
+
+## Implementation and validation
+
+`engine/` contains the native Qwen BPE tokenizer, 32-step OmniVoice diffusion loop,
+classifier-free guidance, audio codec inference, reference WAV reader and saved voice format.
+ONNX Runtime is shared between desktop JVM tests and Android. No CSM graph is loaded by the app.
+
+`tools/omnivoice/` downloads pinned, checksum-verified main/decoder components, exports a
+**dynamic** encoder from the original codec weights, checks encoder parity at unseen lengths,
+and compares native Kotlin audio codes with an independent NumPy reference.
+
+Workflow **Validate OmniVoice and publish APK** publishes a model manifest only after these
+checks pass, then builds an APK using the existing stable signing key and publishes a prerelease.
+The ordinary Android APK workflow also runs unit tests on pushes.
+
+Numerical correctness is not a listening evaluation. Phone speed, heat, long-text quality and
+screen-reader behaviour still need testing on the actual Samsung phone. See
+[installation and testing](docs/INSTALL_AND_TEST.md) and [model notices](THIRD_PARTY_NOTICES.md).
 
 ## Building
 
-GitHub Actions builds the APK on every push (`Android APK` workflow, artifact
-`dhivehi-offline-tts-apk`). Local build: JDK 17, Android SDK 35, Gradle 8.10:
-`gradle :app:assembleDebug`. Engine tests without Android: `gradle -p engine test`.
+JDK 17, Android SDK 35, Gradle 8.10.2: `gradle :app:assembleDebug`.
+JVM tests: `gradle -p engine test`. Real-model parity additionally requires
+`-Domni.model.dir=... -Domni.reference.dir=...` (see the validation workflow).
 
-## Licence
-
-App code: see repository. Voice model: Apache-2.0 (source model and CSM-1B), Mimi codec by
-Kyutai. The source model is described as being for research and educational use and must
-not be used for impersonation or deception; this app is for personal, non-commercial use.
+The original CSM sources and historical reports remain in git for reproducibility.

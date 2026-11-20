@@ -26,7 +26,7 @@ tasks.test {
     maxHeapSize = "3g"
     testLogging { events("passed", "failed", "skipped"); showStandardStreams = true; exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
     // Paths to a converted model package and reference data, provided by CI or locally.
-    listOf("csm.model.dir", "csm.reference.dir", "csm.tokenizer.cases", "csm.output.dir").forEach { key ->
+    listOf("csm.model.dir", "csm.reference.dir", "csm.tokenizer.cases", "csm.output.dir", "omni.model.dir", "omni.reference.dir").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
 }

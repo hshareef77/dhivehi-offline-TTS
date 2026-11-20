@@ -6,10 +6,14 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import com.hussainshareef.dhivehiofflinetts.BuildConfig
-import mv.dhivehi.tts.engine.CsmEngine
+import mv.dhivehi.tts.engine.OmniVoiceEngine
+import mv.dhivehi.tts.engine.GenerationListener
+import mv.dhivehi.tts.engine.TextSegmenter
+import mv.dhivehi.tts.engine.DhivehiNumbers
+import mv.dhivehi.tts.engine.WavWriter
+import mv.dhivehi.tts.engine.ReferenceWav
+import android.net.Uri
 import mv.dhivehi.tts.engine.GenerationCancelledException
-import mv.dhivehi.tts.engine.LongTextListener
-import mv.dhivehi.tts.engine.LongTextSynthesizer
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -43,7 +47,7 @@ class TtsApp : Application() {
     @Volatile var lastStatus = ""
         private set
     var listener: Listener? = null
-    private var engine: CsmEngine? = null
+    private var engine: OmniVoiceEngine? = null
 
     val recordingsDir: File by lazy { File(filesDir, "recordings").apply { mkdirs() } }
 
@@ -162,7 +166,7 @@ class TtsApp : Application() {
         return ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }.availMem
     }
 
-    private fun ensureEngine(): CsmEngine {
+    private fun ensureEngine(): OmniVoiceEngine {
         engine?.let { return it }
         val dir = models.installedDir() ?: throw ModelRepository.UserFacingException(
             "No voice model is installed. Choose Download voice model first.")
@@ -173,7 +177,7 @@ class TtsApp : Application() {
         }
         status("Loading the voice model. This takes a few seconds…", true)
         val threads = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
-        return CsmEngine(dir, threads).also { engine = it }
+        return OmniVoiceEngine(dir, threads).also { engine = it }
     }
 
     private val errorFile: File by lazy { File(filesDir, "last_error.txt") }
@@ -195,66 +199,95 @@ class TtsApp : Application() {
     /** Stops speech that is playing while generating. */
     fun stopLivePlayback() { live?.stop(); live = null }
 
-    /** True when the installed model supports the faster speed settings (fewer codebooks). */
-    @Volatile var fasterSettingsSupported: Boolean? = null
-        private set
+    private val referenceFile: File by lazy { File(filesDir, "omnivoice_reference.json") }
+    fun hasReferenceVoice() = referenceFile.exists()
+    fun deleteReferenceVoice() { if (job == Job.NONE) referenceFile.delete() }
 
-    fun generate(text: String, speaker: Int, speakerName: String, speakWhileGenerating: Boolean = false, speed: Float = 1f,
-                 codebooks: Int = 32) {
+    fun importReference(uri: Uri, transcript: String) {
+        if (transcript.isBlank()) { status("Enter the exact words spoken in the reference recording first.", true); return }
+        if (!begin(Job.LOAD)) return
+        worker.execute {
+            try {
+                status("Preparing reference voice on this phone…", true)
+                val audio = contentResolver.openInputStream(uri)?.use { ReferenceWav.read(it) }
+                    ?: error("Cannot open reference audio")
+                val voice = ensureEngine().createVoice(audio, transcript, object : GenerationListener {
+                    override fun isCancelled() = cancel.get()
+                })
+                if (cancel.get()) throw GenerationCancelledException()
+                voice.save(referenceFile)
+                status("Reference voice saved. Select Saved reference voice to use it offline.", true)
+                main.post { listener?.onModelChanged() }
+            } catch (e: GenerationCancelledException) {
+                status("Reference preparation cancelled.", true)
+            } catch (e: Throwable) {
+                recordError("reference voice", e)
+                closeEngine()
+                status("Could not prepare reference voice: ${e.message}", true)
+            } finally { end() }
+        }
+    }
+
+    fun generate(text: String, useReference: Boolean, speakWhileGenerating: Boolean = false, speed: Float = 1f) {
         if (text.isBlank()) { status("Please enter some Dhivehi text first.", true); return }
         if (!begin(Job.GENERATE)) return
         worker.execute {
             val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
-            val out = File(recordingsDir, "${stamp}_voice${speaker + 1}.wav")
+            val out = File(recordingsDir, "${stamp}_OmniVoice.wav")
             try {
                 val eng = ensureEngine()
-                fasterSettingsSupported = eng.supportsFewerCodebooks
-                if (codebooks < 32 && !eng.supportsFewerCodebooks) {
-                    status("The faster speed settings need the voice model update. Using best quality.", true)
+                val voice = if (useReference) {
+                    require(referenceFile.exists()) { "Import a reference voice first, or select Automatic voice." }
+                    OmniVoiceEngine.Voice.load(referenceFile)
+                } else null
+                val segments = ArrayList<String>()
+                fun addSection(section: String) {
+                    if (eng.estimateFrames(section, voice) <= 350) { segments.add(section); return }
+                    val pieces = TextSegmenter.split(section, (section.length / 2).coerceAtLeast(1))
+                    require(pieces.size > 1) { "A word is too long to speak safely." }
+                    pieces.forEach { addSection(it) }
                 }
-                if (speakWhileGenerating) live = LivePlayer(eng.config.sampleRate, speed)
+                TextSegmenter.split(DhivehiNumbers.normalize(text), 120).forEach { addSection(it) }
+                require(segments.isNotEmpty()) { "There is no text to speak." }
+                if (speakWhileGenerating) live = LivePlayer(eng.sampleRate, speed)
                 val started = System.currentTimeMillis()
                 var lastAnnounceAt = 0L
-                val result = LongTextSynthesizer(eng).synthesizeToWav(text, speaker, out, object : LongTextListener {
-                    override fun onSegmentStart(index: Int, count: Int, text: String) {
-                        status(if (count == 1) "Generating speech with $speakerName…"
-                            else "Generating part ${index + 1} of $count with $speakerName…", true)
+                var samples = 0L
+                WavWriter(out, eng.sampleRate).use { wav ->
+                    segments.forEachIndexed { index, section ->
+                        if (cancel.get()) throw GenerationCancelledException()
+                        status("Generating part ${index + 1} of ${segments.size} with OmniVoice…", true)
                         lastAnnounceAt = System.currentTimeMillis()
-                    }
-                    override fun onFrame(index: Int, count: Int, frames: Int, maxFrames: Int) {
-                        val now = System.currentTimeMillis()
-                        val seconds = frames * 0.08
-                        val msg = (if (count > 1) "Part ${index + 1} of $count: " else "") +
-                            "%.1f seconds of speech generated".format(seconds)
-                        // speak progress at most every 15 seconds to avoid flooding the screen reader
-                        val announce = now - lastAnnounceAt > 15000
-                        if (announce) lastAnnounceAt = now
-                        status(msg, announce)
-                    }
-                    override fun onSegmentAudio(index: Int, count: Int, audio: FloatArray) {
+                        val audio = eng.synthesize(section, voice, 32, object : GenerationListener {
+                            override fun onFrame(frames: Int, maxFrames: Int) {
+                                val now = System.currentTimeMillis()
+                                val announce = now - lastAnnounceAt >= 15000
+                                if (announce) lastAnnounceAt = now
+                                status("Part ${index + 1} of ${segments.size}: generation step $frames of $maxFrames", announce)
+                            }
+                            override fun isCancelled() = cancel.get()
+                        })
+                        wav.write(audio)
                         live?.enqueue(audio)
-                        if (index < count - 1) live?.enqueue(FloatArray(eng.config.sampleRate / 4))
+                        if (index < segments.lastIndex) { wav.writeSilence(0.25f); live?.enqueue(FloatArray(eng.sampleRate / 4)) }
                     }
-                    override fun isCancelled() = cancel.get()
-                }, codebooks = codebooks)
+                    samples = wav.samplesWritten
+                }
                 live?.finish(); live = null
                 val took = (System.currentTimeMillis() - started) / 1000.0
-                status("Speech ready: %.0f seconds of audio, generated in %.0f seconds. Choose Play to listen.".format(Locale.US, result.seconds, took), true)
+                status("Speech ready: %.0f seconds of audio, generated in %.0f seconds. Choose Play to listen.".format(Locale.US, samples.toDouble() / eng.sampleRate, took), true)
                 main.post { listener?.onRecordingReady(out) }
             } catch (e: GenerationCancelledException) {
-                out.delete()
-                status("Generation cancelled.", true)
-            } catch (e: ModelRepository.UserFacingException) {
-                out.delete()
-                status(e.message ?: "Generation failed.", true)
-            } catch (e: OutOfMemoryError) {
-                out.delete(); closeEngine()
-                status("The phone ran out of memory while generating. Close other apps and try a shorter text.", true)
+                if (out.length() > 44) {
+                    status("Generation cancelled. Completed parts were saved as a recording.", true)
+                    main.post { listener?.onRecordingReady(out) }
+                } else { out.delete(); status("Generation cancelled.", true) }
             } catch (e: Throwable) {
-                recordError("generation", e)
-                out.delete()
-                if (e is ai.onnxruntime.OrtException) closeEngine()
-                status("Speech generation failed: ${e.message ?: e.javaClass.simpleName}. You can send the details with Share error details, in the Help section.", true)
+                recordError("OmniVoice generation", e)
+                closeEngine()
+                if (out.length() > 44) main.post { listener?.onRecordingReady(out) } else out.delete()
+                status(if (e is OutOfMemoryError) "The phone ran out of memory. Close other apps and try again."
+                    else "Speech generation failed: ${e.message}. Completed parts, if any, were saved. Share error details in Help for support.", true)
             } finally {
                 if (cancel.get()) stopLivePlayback() else { live?.finish(); live = null }
                 end()

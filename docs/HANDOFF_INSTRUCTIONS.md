@@ -1,3 +1,8 @@
+> Update, 20 November 2026: The owner explicitly requested replacing CSM with OmniVoice.
+> The historical CSM instructions below are retained for context. For the active engine,
+> read README.md, docs/OMNIVOICE_RELEASE.md and .github/workflows/omnivoice.yml.
+> Preserve the same Android package/signing key; no merge into main is authorized.
+
 # Hand-off instructions: finish the Dhivehi Offline TTS voice model
 
 Give this whole document to the platform or developer who will continue the work.

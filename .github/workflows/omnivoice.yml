@@ -1,0 +1,84 @@
+name: Validate OmniVoice and publish APK
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/omnivoice/**'
+      - 'models/omnivoice/**'
+      - '.github/workflows/omnivoice.yml'
+concurrency:
+  group: omnivoice-migration
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PIP_NO_CACHE_DIR: '1'
+      HF_XET_CHUNK_CACHE_SIZE_BYTES: '0'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Prepare storage
+        run: |
+          test -n "$HF_TOKEN"
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/hostedtoolcache/CodeQL
+          sudo mkdir -p /mnt/omni
+          sudo chown "$USER" /mnt/omni
+          sudo fallocate -l 8G /mnt/omni-swap
+          sudo chmod 600 /mnt/omni-swap
+          sudo mkswap /mnt/omni-swap
+          sudo swapon /mnt/omni-swap
+      - name: Install conversion tools
+        run: |
+          pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers==5.5.0 tokenizers==0.22.2 'huggingface_hub<2' accelerate librosa==0.11.0 onnx==1.23.2 onnxruntime==1.31.1 soundfile
+      - name: Validate real models and native Kotlin; publish verified manifest last
+        run: python tools/omnivoice/prepare.py --work /mnt/omni --publish
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: omnivoice-validation
+          path: /mnt/omni/report/
+          if-no-files-found: warn
+  apk:
+    needs: model
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Build update with existing stable signing key
+        run: |
+          export VERSION_CODE=$(date +%s)
+          gradle :app:assembleDebug --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk Dhivehi-Offline-TTS-OmniVoice.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dhivehi-omnivoice-apk
+          path: Dhivehi-Offline-TTS-OmniVoice.apk
+      - name: Publish APK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "omnivoice-${GITHUB_RUN_NUMBER}" Dhivehi-Offline-TTS-OmniVoice.apk --target "$GITHUB_SHA" --title "Dhivehi Offline TTS — OmniVoice" --notes-file docs/OMNIVOICE_RELEASE.md --prerelease

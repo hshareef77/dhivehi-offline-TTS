@@ -20,7 +20,7 @@ import java.security.MessageDigest
  * is only ever "installed" when every file is complete and correct.
  */
 class ModelRepository(context: Context, private val baseUrl: String) {
-    data class ModelFile(val path: String, val size: Long, val sha256: String)
+    data class ModelFile(val path: String, val size: Long, val sha256: String, val url: String)
     data class Manifest(val name: String, val version: Int, val totalSize: Long, val files: List<ModelFile>, val json: String)
 
     class UserFacingException(message: String) : Exception(message)
@@ -39,7 +39,10 @@ class ModelRepository(context: Context, private val baseUrl: String) {
         if (!installedFile.exists()) return null
         return try {
             val j = JSONObject(installedFile.readText())
-            File(root, j.getString("dir")).takeIf { File(it, "model_config.json").exists() }
+            File(root, j.getString("dir")).takeIf {
+                val config = File(it, "model_config.json")
+                config.exists() && JSONObject(config.readText()).optString("engine") == "omnivoice"
+            }
         } catch (e: Exception) { null }
     }
 
@@ -122,6 +125,14 @@ class ModelRepository(context: Context, private val baseUrl: String) {
             }
             if (!part.renameTo(target)) throw IOException("Cannot finish ${f.path}")
         }
+        for (f in m.files) {
+            if (progress.isCancelled()) throw CancelledException()
+            val path = File(staging, f.path)
+            if (path.length() != f.size || sha256(path, progress) != f.sha256) {
+                path.delete()
+                throw UserFacingException("A downloaded file failed verification. Download again to repair it.")
+            }
+        }
         install(m)
     }
 
@@ -133,7 +144,7 @@ class ModelRepository(context: Context, private val baseUrl: String) {
         var attempts = 0
         while (true) {
             if (progress.isCancelled()) throw CancelledException()
-            val conn = open(f.path, if (existing > 0) existing else null)
+            val conn = open(f.path, if (existing > 0) existing else null, f.url)
             try {
                 val code = conn.responseCode
                 if (code == 200 && existing > 0) {
@@ -190,8 +201,8 @@ class ModelRepository(context: Context, private val baseUrl: String) {
 
     fun hasPartialDownload(): Boolean = staging.exists() && (staging.listFiles()?.any { it.name != "manifest.json" } == true)
 
-    private fun open(path: String, rangeStart: Long?): HttpURLConnection {
-        val url = URL(baseUrl.trimEnd('/') + "/" + path.split('/').joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8") })
+    private fun open(path: String, rangeStart: Long?, sourceUrl: String? = null): HttpURLConnection {
+        val url = if (sourceUrl != null) URL(sourceUrl) else URL(baseUrl.trimEnd('/') + "/" + path.split('/').joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8") })
         return (url.openConnection() as HttpURLConnection).apply {
             connectTimeout = 20000
             readTimeout = 60000
@@ -220,14 +231,22 @@ class ModelRepository(context: Context, private val baseUrl: String) {
     companion object {
         fun parseManifest(text: String): Manifest {
             val j = JSONObject(text)
-            require(j.optString("format") == "dhivehi-csm-onnx") { "Unknown model package" }
+            require(j.optString("format") == "dhivehi-omnivoice-onnx") { "Unknown model package" }
             require(j.getInt("format_version") == 1) { "This voice model needs a newer version of the app" }
             val arr = j.getJSONArray("files")
             val files = (0 until arr.length()).map {
                 val f = arr.getJSONObject(it)
-                ModelFile(f.getString("path"), f.getLong("size"), f.getString("sha256"))
+                ModelFile(f.getString("path"), f.getLong("size"), f.getString("sha256"), f.getString("url"))
             }
-            files.forEach { require(!it.path.contains("..") && !it.path.startsWith("/")) { "Invalid file name" } }
+            files.forEach {
+                require(it.path.matches(Regex("[A-Za-z0-9_.-]+")) && !it.path.contains("..")) { "Invalid file name" }
+                val url = URL(it.url)
+                require(url.protocol == "https" && url.host in setOf("huggingface.co", "raw.githubusercontent.com")) { "Invalid model source" }
+                require(it.size > 0 && it.sha256.matches(Regex("[a-f0-9]{64}"))) { "Invalid model checksum" }
+            }
+            require(files.map { it.path }.toSet().size == files.size)
+            require(files.sumOf { it.size } == j.getLong("total_size"))
+            require(files.map { it.path }.containsAll(listOf("lm.onnx", "omnivoice.qint8.onnx_data", "encoder.onnx", "decoder.onnx", "tokenizer.json", "model_config.json")))
             return Manifest(j.getString("name"), j.getInt("version"), j.getLong("total_size"), files, text)
         }
 

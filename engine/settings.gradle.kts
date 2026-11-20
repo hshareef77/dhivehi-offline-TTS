@@ -1,3 +1,3 @@
-pluginManagement { repositories { maven("https://repo1.maven.org/maven2"); gradlePluginPortal() } }
-dependencyResolutionManagement { repositories { maven("https://repo1.maven.org/maven2"); mavenCentral() } }
+pluginManagement { repositories { mavenCentral(); gradlePluginPortal() } }
+dependencyResolutionManagement { repositories { mavenCentral(); mavenCentral() } }
 rootProject.name = "engine"

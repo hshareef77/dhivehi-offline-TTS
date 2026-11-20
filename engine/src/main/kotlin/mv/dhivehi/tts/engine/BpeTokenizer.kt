@@ -16,6 +16,7 @@ class BpeTokenizer(
     merges: List<Pair<String, String>>,
     special: Map<String, Int>,
     private val ignoreMerges: Boolean = true,
+    private val preTokenizer: Pattern = PRE_TOKENIZER,
 ) {
     private val vocab = HashMap<String, Int>(vocabTokens.size * 2)
     private val mergeRanks = HashMap<Long, Long>(merges.size * 2)
@@ -37,7 +38,7 @@ class BpeTokenizer(
     /** Encodes plain text (no special-token parsing, no BOS/EOS). */
     fun encode(text: String): List<Int> {
         val out = ArrayList<Int>()
-        val m = PRE_TOKENIZER.matcher(text)
+        val m = preTokenizer.matcher(text)
         var last = 0
         while (m.find()) {
             if (m.start() > last) encodePiece(text.substring(last, m.start()), out)
