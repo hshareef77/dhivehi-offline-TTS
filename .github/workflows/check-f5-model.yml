@@ -7,7 +7,6 @@ on:
       - '.github/workflows/check-f5-model.yml'
 permissions:
   contents: read
-  actions: read
 concurrency:
   group: f5-model-check
   cancel-in-progress: true
@@ -17,7 +16,6 @@ jobs:
     timeout-minutes: 90
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      GH_TOKEN: ${{ github.token }}
       F5_WORK: /mnt/f5-work
       PIP_NO_CACHE_DIR: '1'
       HF_XET_CHUNK_CACHE_SIZE_BYTES: '0'
@@ -36,6 +34,8 @@ jobs:
           sudo chmod 600 /mnt/f5-swap
           sudo mkswap /mnt/f5-swap
           sudo swapon /mnt/f5-swap
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg libsndfile1
           df -h / /mnt
       - uses: actions/setup-python@v5
         with:
@@ -43,7 +43,7 @@ jobs:
       - name: Install official CPU inference tools
         run: |
           pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu
-          pip install 'f5-tts @ git+https://github.com/SWivid/F5-TTS.git@600e5fdfbf319f84735557aca80a7aaf60d487e6' 'transformers==4.57.1'
+          pip install 'f5-tts @ git+https://github.com/SWivid/F5-TTS.git@600e5fdfbf319f84735557aca80a7aaf60d487e6' 'transformers==4.57.1' 'onnxruntime==1.31.1'
           pip freeze > f5-environment.txt
       - name: Download, strictly load, and test the real F5 model
         run: python tools/f5/check_model.py

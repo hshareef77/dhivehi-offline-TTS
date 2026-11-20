@@ -1,18 +1,16 @@
 """Load the approved Dhivehi F5 checkpoint and generate one diagnostic sample."""
 import gc
 import hashlib
-import io
 import json
 import os
 import time
-import zipfile
+import sys
 from pathlib import Path
 
 import numpy as np
-import requests
 import soundfile as sf
 import torch
-from huggingface_hub import HfApi, snapshot_download
+from huggingface_hub import HfApi, snapshot_download, hf_hub_download
 
 ROOT = Path(os.environ["F5_WORK"])
 OUT = Path("f5-report")
@@ -56,23 +54,43 @@ def main():
     save()
     print("Real F5 checkpoint and Vocos loaded successfully.", flush=True)
 
-    # Reference is synthetic speech produced by this project's earlier validated CSM run.
-    # No human's voice or identity is used as a new reference.
-    url = "https://api.github.com/repos/hshareef77/dhivehi-offline-TTS/actions/artifacts/12963957636/zip"
-    response = requests.get(url, headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
-                                         "Accept": "application/vnd.github+json"}, timeout=120)
-    response.raise_for_status()
-    archive = response.content
-    if hashlib.sha256(archive).hexdigest() != "c3552d8cfe9ad8c8efb3e8c128170bdb5bb256da6794509d33a71d6ecb8d137f":
-        raise RuntimeError("Synthetic reference archive checksum mismatch")
-    ref_name = "q8_speaker4_s1.wav"
-    ref_path = OUT / "synthetic_reference.wav"
-    with zipfile.ZipFile(io.BytesIO(archive)) as z:
-        ref_path.write_bytes(z.read(ref_name))
+    # Generate fresh synthetic reference speech; do not depend on expiring CI artifacts.
     ref_text = "މެލޭޝިއާގައި އިތުރުކުރާ ޓެކްސް، ދިވެހި ދަރިވަރުންނަށް ބުރައަކަށް ނުވާނެ ގޮތެއް ހޯދައިދޭނަން"
     gen_text = "މިއަދު މޫސުން ވަރަށް ރަނގަޅު."
-    report["reference"] = {"kind": "synthetic CSM speech", "artifact_id": 12963957636,
-                           "file": ref_name, "text": ref_text}
+    csm_repo = "Hshareef77/csm-1b-dhivehi-5spk-onnx"
+    csm_revision = HfApi().model_info(csm_repo).sha
+    csm_dir = ROOT / "reference-model"
+    manifest_file = hf_hub_download(csm_repo, "manifest.json", revision=csm_revision, local_dir=csm_dir)
+    manifest = json.loads(Path(manifest_file).read_text())
+    paths = [entry["path"] for entry in manifest["files"]]
+    if any(not (csm_dir / p).resolve().is_relative_to(csm_dir.resolve()) for p in paths):
+        raise RuntimeError("Unsafe reference-package path")
+    snapshot_download(csm_repo, revision=csm_revision, local_dir=csm_dir, allow_patterns=paths)
+    for entry in manifest["files"]:
+        path = csm_dir / entry["path"]
+        with path.open("rb") as f:
+            digest = hashlib.file_digest(f, "sha256").hexdigest()
+        if path.stat().st_size != entry["size"] or digest != entry["sha256"]:
+            raise RuntimeError("Reference-package checksum mismatch: " + entry["path"])
+    from tokenizers import Tokenizer
+    tokenizer_path = hf_hub_download("alakxender/csm-1b-dhivehi-5-spk-gd", "tokenizer.json")
+    tokenizer = Tokenizer.from_file(tokenizer_path)
+    sys.path.insert(0, str(Path("conversion").resolve()))
+    from csm_pipeline import CsmOnnx, Sampler
+    print("Generating fresh synthetic Dhivehi reference.", flush=True)
+    reference_engine = CsmOnnx(str(csm_dir), threads=min(4, os.cpu_count() or 2))
+    cfg = reference_engine.cfg
+    ids = [cfg["bos_token_id"]] + tokenizer.encode("[4]" + ref_text, add_special_tokens=False).ids + [cfg["eos_token_id"]]
+    frames = reference_engine.generate_frames(ids, 180, Sampler(seed=4001))
+    reference_audio = reference_engine.decode(frames)
+    if not len(reference_audio) or not np.isfinite(reference_audio).all() or len(frames) >= 180:
+        raise RuntimeError("Synthetic reference generation failed validation")
+    ref_path = OUT / "synthetic_reference.wav"
+    sf.write(ref_path, reference_audio, cfg["sample_rate"], subtype="PCM_16")
+    del reference_engine, tokenizer, reference_audio
+    gc.collect()
+    report["reference"] = {"kind": "fresh synthetic CSM speech", "repository": csm_repo,
+                           "revision": csm_revision, "speaker": 4, "text": ref_text}
     report["generated_text"] = gen_text
     start = time.monotonic()
     wav, sample_rate, _ = tts.infer(ref_file=str(ref_path), ref_text=ref_text,
