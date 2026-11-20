@@ -1,3 +1,66 @@
+# OmniVoice migration update — 20 November 2026
+
+The owner explicitly requested replacing CSM with OmniVoice after finding the hosted
+OmniVoice demo clearer. The Android package and existing stable debug signing key are
+unchanged. The app now loads native OmniVoice ONNX sessions, not CSM. Historical CSM
+results below do not describe the active engine.
+
+## Current integration
+
+- Kotlin Qwen BPE tokenizer uses the downloaded model's NFC normalization, vocabulary,
+  merges, special tokens and exact pre-tokenization regex.
+- Native 32-step masked diffusion, guidance 2.0, time shift 0.1, layer penalty 5.0,
+  position temperature 5.0, class temperature 0.0, language `dv`.
+- Automatic voice plus locally saved reference voice replaces five CSM speaker IDs.
+- Reference import accepts 3–10 seconds of PCM16/float WAV, mono or stereo, 8–96 kHz;
+  converted locally to mono 24 kHz, padded by at most one codec frame (40 ms).
+- Long text is segmented with a bounded target duration; completed audio is written to
+  one WAV incrementally. Cancellation preserves finished sections. No online generation.
+- Weights remain separate from the ARM64 APK. Model downloads resume and are SHA-256
+  verified before the installed pointer switches. Old CSM files are removed after
+  installation succeeds; saved recordings are retained.
+- All build workflows use the same timestamp version-code scheme so switching between
+  build workflows does not produce an APK with a lower version code.
+
+## Verified locally with real model weights
+
+- The original community encoder was fixed to a 1-second input and was rejected.
+  A new dynamic encoder was exported from the original OmniVoice codec checkpoint.
+- Encoder codes matched the original exactly (1.0000) on structured/noisy audio at
+  3.00, 3.28, 5.00, 9.00 and 10.00 seconds. Encoder file: 654,402,865 bytes.
+- Seven tokenizer cases (Thaana, fili, English, numbers, NFC and special tokens) matched
+  Hugging Face tokenizers.
+- The Kotlin engine produced exactly the same full audio code matrices as the independent
+  NumPy/ONNX implementation for automatic and reference-conditioned Dhivehi generation.
+  Both used ONNX Runtime **1.31.1**. Mixing 1.23.2 and 1.31.1 produced divergent quantized
+  trajectories; the shipped Android/JVM and CI runtimes are aligned to 1.31.1.
+- Non-empty, finite, non-silent decoded speech, cancellation before generation, reference
+  WAV conversion and saved reference voice round-trips passed.
+- The cloning parity fixture uses a synthetic tone reference to verify numerical plumbing;
+  it is deliberately not presented as a listening-quality example.
+- Local Python automatic test: 1.8 seconds of audio generated in approximately 31.7 seconds
+  (32 steps, 3 CPU threads). This is **not a phone benchmark** or a claim of fast playback.
+- The Android APK compiled successfully on GitHub Actions, run 44717729108.
+
+Complete expected model download: **1,367,133,280 bytes** (1.367 GB / 1.273 GiB), six files.
+The validation workflow recalculates and publishes the exact manifest from the actual files.
+Main network and decoder are pinned community ONNX exports; the encoder is exported and
+validated from original weights. See THIRD_PARTY_NOTICES.md for sources and licences.
+
+## Release gate and remaining phone checks
+
+Workflow `Validate OmniVoice and publish APK` runs encoder parity, independent inference
+and Kotlin parity before publishing the model manifest. APK prerelease publication depends
+on that job succeeding. Run: https://github.com/hshareef77/dhivehi-offline-TTS/actions/runs/44717729132
+
+Dhivehi listening quality, missing/repeated words, long-text consistency, real phone speed,
+peak memory, heat and TalkBack/Jieshuo+ behaviour still need testing on the Samsung phone.
+The integration does not establish real-time generation. The user should test one short
+sentence before committing to long articles. A clean Dhivehi reference is recommended for
+voice consistency; automatic voice can vary between independently generated sections.
+
+---
+
 # Implementation report (30 October 2026)
 
 ## Summary

@@ -45,8 +45,8 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           REQUESTED_FORMAT: ${{ inputs.format }}
-          VERSION_CODE: ${{ github.run_number }}5
         run: |
+          export VERSION_CODE=$(date +%s)
           if [ "$REQUESTED_FORMAT" = 'aab' ]; then
             gradle --no-daemon :app:bundleRelease
           else

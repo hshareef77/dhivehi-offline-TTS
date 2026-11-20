@@ -26,10 +26,10 @@ jobs:
       - name: Speech engine unit tests (JVM)
         run: gradle -p engine test --stacktrace
       - name: Build debug APK
-        env:
-          # increasing version code so each APK installs over the previous one
-          VERSION_CODE: ${{ github.run_number }}0
-        run: gradle :app:assembleDebug --stacktrace
+        run: |
+          # Shared monotonic scheme across APK/release workflows, preserving in-place updates.
+          export VERSION_CODE=$(date +%s)
+          gradle :app:assembleDebug --stacktrace
       - name: Rename APK
         run: cp app/build/outputs/apk/debug/app-debug.apk "dhivehi-offline-tts-${{ github.run_number }}.apk"
       - uses: actions/upload-artifact@v4
