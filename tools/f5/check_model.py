@@ -56,7 +56,7 @@ def main():
 
     # Generate fresh synthetic reference speech; do not depend on expiring CI artifacts.
     ref_text = "މެލޭޝިއާގައި އިތުރުކުރާ ޓެކްސް، ދިވެހި ދަރިވަރުންނަށް ބުރައަކަށް ނުވާނެ ގޮތެއް ހޯދައިދޭނަން"
-    gen_text = "މިއަދު މޫސުން ވަރަށް ރަނގަޅު."
+    gen_text = Path("tools/f5/input.txt").read_text(encoding="utf-8").strip()
     csm_repo = "Hshareef77/csm-1b-dhivehi-5spk-onnx"
     csm_revision = HfApi().model_info(csm_repo).sha
     csm_dir = ROOT / "reference-model"
@@ -93,11 +93,38 @@ def main():
                            "revision": csm_revision, "speaker": 4, "text": ref_text}
     report["generated_text"] = gen_text
     start = time.monotonic()
-    wav, sample_rate, _ = tts.infer(ref_file=str(ref_path), ref_text=ref_text,
-                                   gen_text=gen_text, nfe_step=32, seed=42)
-    wav = np.asarray(wav, dtype=np.float32)
-    if not wav.size or not np.isfinite(wav).all() or np.max(np.abs(wav)) <= 1e-6:
-        raise RuntimeError("Generated audio is empty, non-finite, or silent")
+    # Bound chunk length by UTF-8 bytes, as used by F5's duration estimator.
+    words = gen_text.split()
+    chunks, current = [], ""
+    for word in words:
+        candidate = (current + " " + word).strip()
+        if current and len(candidate.encode("utf-8")) > 420:
+            chunks.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    report["chunks"] = []
+    segments = []
+    for index, chunk in enumerate(chunks):
+        print(f"Generating section {index + 1}/{len(chunks)}", flush=True)
+        chunk_start = time.monotonic()
+        wav, sample_rate, _ = tts.infer(
+            ref_file=str(ref_path), ref_text=ref_text, gen_text=chunk,
+            nfe_step=32, seed=42 + index)
+        wav = np.asarray(wav, dtype=np.float32)
+        if not wav.size or not np.isfinite(wav).all() or np.max(np.abs(wav)) <= 1e-6:
+            raise RuntimeError(f"Invalid generated audio in section {index + 1}")
+        sf.write(OUT / f"section_{index + 1:03d}.wav", wav, sample_rate, subtype="PCM_16")
+        segments.append(wav)
+        report["chunks"].append({"index": index + 1, "text": chunk,
+                                 "audio_seconds": round(wav.size / sample_rate, 3),
+                                 "inference_seconds": round(time.monotonic() - chunk_start, 2)})
+        save()
+    silence = np.zeros(int(sample_rate * 0.25), dtype=np.float32)
+    wav = np.concatenate([part for i, segment in enumerate(segments)
+                          for part in ([silence, segment] if i else [segment])])
     sf.write(OUT / "f5_dhivehi_sample.wav", wav, sample_rate, subtype="PCM_16")
     seconds = wav.size / sample_rate
     elapsed = time.monotonic() - start
