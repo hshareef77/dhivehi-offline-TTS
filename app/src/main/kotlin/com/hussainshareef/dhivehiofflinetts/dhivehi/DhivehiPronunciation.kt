@@ -73,10 +73,18 @@ object DhivehiPronunciation {
                 val mark = word.getOrNull(i + 1)
                 when {
                     mark == SUKUN -> {
-                        // Thaana sukun is not always phonetic silence. In particular,
-                        // alifu+sukun marks glottalisation or consonant doubling in
-                        // particular environments; that needs linguistic review.
-                        result.append(sound)
+                        // In many common Thaana spellings, alifu+sukun before a
+                        // consonant marks gemination of that following consonant.
+                        // This is an approximation: glottal and dialect-specific
+                        // contexts still require reviewed pronunciation rules.
+                        if (ch == 'އ' && i + 2 < word.length) {
+                            val following = letters[word[i + 2]]
+                            if (following != null && following.isNotEmpty()) {
+                                result.append(following)
+                            }
+                        } else {
+                            result.append(sound)
+                        }
                         i += 2
                     }
                     mark != null && vowels.containsKey(mark) -> {
