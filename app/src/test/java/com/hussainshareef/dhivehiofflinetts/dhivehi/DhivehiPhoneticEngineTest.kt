@@ -7,9 +7,15 @@ import org.junit.Test
 class DhivehiPhoneticEngineTest {
     @Test fun divehiUsesEnginePhonemes() {
         val result = DhivehiPhoneticEngine.analyze("ދިވެހި")
-        assertEquals("`[.1Di.0vE.0hi]", result.annotated)
+        assertEquals("`[.1di.0vE.0hi]", result.annotated)
         assertEquals(1, result.words)
         assertTrue(result.unresolved.isEmpty())
+    }
+
+    @Test fun dentalStopsUseStopPhonemesNotEnglishThFricatives() {
+        assertEquals("`[.1ta]", DhivehiPhoneticEngine.analyze("ތަ").annotated)
+        assertEquals("`[.1da]", DhivehiPhoneticEngine.analyze("ދަ").annotated)
+        assertTrue(DhivehiPhoneticEngine.analyze("ދަ").approximate.contains('ދ'))
     }
 
     @Test fun longVowelHasDifferentRepresentation() {
@@ -40,7 +46,7 @@ class DhivehiPhoneticEngineTest {
         val base = "ދިވެހި"
         assertEquals("`[.1Da.0mi]",
             DhivehiPhoneticEngine.analyze(base, mapOf(base to "SPR:.1Da.0mi")).annotated)
-        assertEquals("`[.1Di.0vE.0hi]",
+        assertEquals("`[.1di.0vE.0hi]",
             DhivehiPhoneticEngine.analyze(base, mapOf(base to "SPR:`vs300")).annotated)
     }
 
