@@ -5,7 +5,7 @@ plugins {
 android {
     namespace = "com.hussainshareef.dhivehiofflinetts"
     compileSdk = 35
-    defaultConfig { applicationId = "com.hussainshareef.dhivehiofflinetts"; minSdk = 26; targetSdk = 35; versionCode = 5; versionName = "0.5-dhivehi-phonemes" }
+    defaultConfig { applicationId = "com.hussainshareef.dhivehiofflinetts"; minSdk = 26; targetSdk = 35; versionCode = 6; versionName = "0.6-dhivehi-naturalness" }
 
     val keyStorePath = System.getenv("ANDROID_KEYSTORE_PATH")
     if (!keyStorePath.isNullOrBlank()) {
