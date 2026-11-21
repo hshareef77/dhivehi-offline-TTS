@@ -9,6 +9,7 @@
         </activity>
         <service android:name="com.hshareef77.dhivehiofflinetts.DhivehiTtsService"
             android:exported="true"
+            android:enabled="false"
             android:permission="android.permission.BIND_TEXT_SERVICE"
             android:label="Dhivehi Phonetic Preview (Experimental)">
             <intent-filter>
