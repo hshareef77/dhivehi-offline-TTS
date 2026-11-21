@@ -115,8 +115,10 @@ class MainActivity : Activity() {
         root.addView(nativeVoiceList)
         root.addView(action("Test native Eloquence voice") {
             val text = convert()
-            if (text.isNotBlank()) nativePreview.play(text, (speed.progress + 5) / 15f)
-        }
+            if (text.isNotBlank()) nativePreview.play(
+                text, (speed.progress + 5) / 15f,
+                nativeVoiceList.selectedItemPosition.coerceIn(0, 8))
+        })
         root.addView(action("Stop") { nativePreview.stop(); nativeExporter.cancel(); tts?.stop(); audioRequestId = null; report("Stopped") })
         root.addView(action("Generate audio") {
             if (nativePreview.isInstalled) {
