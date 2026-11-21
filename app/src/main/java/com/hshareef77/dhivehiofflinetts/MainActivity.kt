@@ -32,6 +32,8 @@ class MainActivity : Activity() {
     private lateinit var preview: TextView
     private lateinit var speed: SeekBar
     private lateinit var voiceList: Spinner
+    private lateinit var engineList: Spinner
+    private var availableEngines = listOf<TextToSpeech.EngineInfo>()
     private var availableVoices = listOf<Voice>()
     private var activeSpeechSerial = 0
     private var audioRequestId: String? = null
@@ -84,6 +86,13 @@ class MainActivity : Activity() {
         root.addView(action("Stop") { tts?.stop(); audioRequestId = null; report("Stopped") })
         root.addView(action("Generate audio") { speak(true) })
         root.addView(action("Pronunciation preview") { convert() })
+        root.addView(label("Speech engine"))
+        engineList = Spinner(this).apply {
+            contentDescription = "Select underlying speech engine"
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("Loading speech engines"))
+        }
+        root.addView(engineList)
+        root.addView(action("Use selected engine") { selectEngine() })
         root.addView(label("Voice"))
         voiceList = Spinner(this).apply {
             contentDescription = "Select voice"
@@ -128,11 +137,14 @@ class MainActivity : Activity() {
 
     private fun initializeTts() {
         ready = false
-        tts = TextToSpeech(applicationContext) { result ->
+        val configuredPackage = getSharedPreferences("tts_config", MODE_PRIVATE)
+            .getString("delegate_package", null)?.takeUnless { it == packageName }
+        tts = TextToSpeech(applicationContext, { result ->
             ui.post {
                 ready = result == TextToSpeech.SUCCESS
                 if (ready) {
                     val languageStatus = tts?.setLanguage(Locale.US)
+                    populateEngines()
                     populateVoices()
                     tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                         override fun onStart(utteranceId: String?) {}
@@ -170,7 +182,26 @@ class MainActivity : Activity() {
                     else report("Ready. Uses your currently selected Android TTS voice.")
                 } else report("No functioning Android TTS voice. Check your device's TTS settings.")
             }
-        }
+        }, configuredPackage)
+    }
+
+    private fun populateEngines() {
+        val installed = tts?.engines.orEmpty().filter { it.name != packageName }
+        availableEngines = installed.sortedBy { it.label?.toString() ?: it.name }
+        engineList.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
+            if (availableEngines.isEmpty()) listOf("No compatible installed speech engine")
+            else availableEngines.map { "${it.label} (${it.name})" })
+        val configured = getSharedPreferences("tts_config", MODE_PRIVATE).getString("delegate_package", null)
+        val selected = availableEngines.indexOfFirst { it.name == configured }
+        if (selected >= 0) engineList.setSelection(selected)
+    }
+
+    private fun selectEngine() {
+        val engine = availableEngines.getOrNull(engineList.selectedItemPosition)
+            ?: return report("Install an offline speech engine first.")
+        getSharedPreferences("tts_config", MODE_PRIVATE).edit()
+            .putString("delegate_package", engine.name).apply()
+        reloadEngine()
     }
 
     private fun convert(): String {
@@ -313,7 +344,9 @@ class MainActivity : Activity() {
     }
 
     private fun loadCorrections() {
-        val raw = getPreferences(MODE_PRIVATE).getString("pronunciations", "{}") ?: "{}"
+        val store = getSharedPreferences("pronunciations", MODE_PRIVATE)
+        val old = getPreferences(MODE_PRIVATE).getString("pronunciations", "{}") ?: "{}"
+        val raw = store.getString("pronunciations", old) ?: "{}"
         try {
             val obj = JSONObject(raw)
             val keys = obj.keys()
@@ -327,7 +360,8 @@ class MainActivity : Activity() {
     private fun saveCorrections() {
         val obj = JSONObject()
         for ((key, value) in corrections) obj.put(key, value)
-        getPreferences(MODE_PRIVATE).edit().putString("pronunciations", obj.toString()).apply()
+        getSharedPreferences("pronunciations", MODE_PRIVATE).edit()
+            .putString("pronunciations", obj.toString()).apply()
     }
 
     private fun report(message: String) {
