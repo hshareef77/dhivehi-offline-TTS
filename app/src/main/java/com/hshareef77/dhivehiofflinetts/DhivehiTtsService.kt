@@ -119,7 +119,9 @@ class DhivehiTtsService : TextToSpeechService() {
         // Native PCM streaming takes priority. It requires libevvjni.so built
         // with the language engine: no intermediate WAV or system TTS callback.
         if (nativeBackend.available && nativeBackend.open()) {
-            if (nativeBackend.synthesize(text, request.speechRate, request.pitch, callback)) {
+            if (nativeBackend.synthesize(text, request.speechRate, request.pitch, callback,
+                    getSharedPreferences("tts_config", MODE_PRIVATE)
+                        .getInt("native_preset", 0).coerceIn(0, 8))) {
                 callback.done()
             } else callback.error()
             return
