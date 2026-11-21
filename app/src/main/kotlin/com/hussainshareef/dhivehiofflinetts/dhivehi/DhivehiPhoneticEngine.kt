@@ -18,7 +18,8 @@ object DhivehiPhoneticEngine {
         val annotated: String,
         val unresolved: Set<Char>,
         val approximate: Set<Char>,
-        val words: Int
+        val words: Int,
+        val ipaPreview: String
     )
 
     private val consonants = mapOf(
@@ -63,6 +64,7 @@ object DhivehiPhoneticEngine {
     fun analyze(text: String, corrections: Map<String, String> = emptyMap()): Analysis {
         val source = Normalizer.normalize(text, Normalizer.Form.NFC)
         val out = StringBuilder(source.length * 3)
+        val ipaText = StringBuilder(source.length * 2)
         val unsupported = linkedSetOf<Char>()
         val approximate = linkedSetOf<Char>()
         var count = 0
@@ -73,6 +75,7 @@ object DhivehiPhoneticEngine {
                 while (i < source.length && isThaana(source[i])) i++
                 val word = source.substring(begin, i)
                 count++
+                ipaText.append(DhivehiPhonology.analyzeWord(word).ipa)
                 val custom = corrections[word]?.trim()?.takeIf { it.length <= 200 }
                 if (custom?.startsWith("SPR:", ignoreCase = true) == true) {
                     val code = custom.substring(4).trim()
@@ -93,9 +96,10 @@ object DhivehiPhoneticEngine {
                 // A literal backtick in engine annotation mode is dangerous.
                 // Deliberately omit unsafe backtick rather than interpret it.
                 out.append(if (ch == '`') '\'' else ch)
+                ipaText.append(ch)
             }
         }
-        return Analysis(out.toString(), unsupported, approximate, count)
+        return Analysis(out.toString(), unsupported, approximate, count, ipaText.toString())
     }
 
     private fun wordToSpr(
