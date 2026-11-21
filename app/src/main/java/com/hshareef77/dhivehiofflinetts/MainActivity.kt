@@ -68,6 +68,8 @@ class MainActivity : Activity() {
             contentDescription = "Dhivehi text"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
             minLines = 4
+            textDirection = android.view.View.TEXT_DIRECTION_RTL
+            gravity = android.view.Gravity.END or android.view.Gravity.TOP
             setText("އައްސަލާމު ޢަލައިކުމް")
         }
         root.addView(editor)
@@ -89,6 +91,7 @@ class MainActivity : Activity() {
         }
         root.addView(voiceList)
         preview = label("Converted pronunciation will appear here.")
+        preview.textDirection = android.view.View.TEXT_DIRECTION_LTR
         preview.isFocusable = true
         root.addView(preview)
         root.addView(action("Correct a word") { correctionDialog() })
