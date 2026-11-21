@@ -4,12 +4,17 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish_preview:
+        description: 'Publish signed preview APK to GitHub Releases after tests pass'
+        type: boolean
+        default: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -59,3 +64,17 @@ jobs:
           name: dhivehi-phonetic-lab-signed
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
+      - name: Publish signed preview APK only on explicit manual request
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_preview && steps.signing.outputs.available == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v0.3.0-preview-${GITHUB_RUN_NUMBER}"
+          cp app/build/outputs/apk/release/app-release.apk "dhivehi-tts-${TAG}.apk"
+          gh release create "${TAG}" "dhivehi-tts-${TAG}.apk" \
+            --title "Dhivehi TTS phonetic preview ${TAG}" \
+            --notes "Personal testing only: experimental phonetic wrapper. Requires another installed offline TTS engine. Native Eloquence voice is not bundled; Dhivehi pronunciation is not verified. Keep existing screen-reader voice available." \
+            --prerelease \
+            --target "${GITHUB_SHA}"
