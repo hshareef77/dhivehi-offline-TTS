@@ -23,6 +23,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import com.hussainshareef.dhivehiofflinetts.dhivehi.DhivehiPronunciation
 import com.hussainshareef.dhivehiofflinetts.dhivehi.DhivehiPhoneticEngine
+import com.hussainshareef.dhivehiofflinetts.dhivehi.DhivehiProsody
 import com.hussainshareef.dhivehiofflinetts.dhivehi.SpeechChunks
 import org.json.JSONObject
 import java.io.File
@@ -41,6 +42,7 @@ class MainActivity : Activity() {
     private lateinit var engineList: Spinner
     private lateinit var nativeVoiceList: Spinner
     private lateinit var directPhonemes: CheckBox
+    private lateinit var cadence: Spinner
     private var availableEngines = listOf<TextToSpeech.EngineInfo>()
     private var availableVoices = listOf<Voice>()
     private var activeSpeechSerial = 0
@@ -109,6 +111,23 @@ class MainActivity : Activity() {
             }
         }
         root.addView(directPhonemes)
+        cadence = Spinner(this).apply {
+            contentDescription = "Pronunciation rhythm"
+            adapter = ArrayAdapter(this@MainActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                listOf("Connected speech", "Clear speech"))
+            setSelection(getSharedPreferences("tts_config", MODE_PRIVATE)
+                .getInt("cadence", 0).coerceIn(0, 1))
+            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: android.widget.AdapterView<*>?,
+                    view: android.view.View?, position: Int, id: Long) {
+                    getSharedPreferences("tts_config", MODE_PRIVATE).edit()
+                        .putInt("cadence", position).apply()
+                }
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+            }
+        }
+        root.addView(cadence)
         root.addView(label("Native Eloquence voice"))
         nativeVoiceList = Spinner(this).apply {
             contentDescription = "Native Eloquence voice"
@@ -363,11 +382,14 @@ class MainActivity : Activity() {
             return ""
         }
         val result = DhivehiPhoneticEngine.analyze(raw, corrections)
-        preview.text = result.annotated
+        val output = DhivehiProsody.render(result.annotated,
+            if (cadence.selectedItemPosition == 1) DhivehiProsody.Style.CLEAR
+            else DhivehiProsody.Style.CONNECTED)
+        preview.text = output
         if (result.unresolved.isNotEmpty() || result.approximate.isNotEmpty()) {
             report("Phoneme preview. Some Dhivehi sounds are approximations; pronunciation needs listening review.")
         }
-        return result.annotated
+        return output
     }
 
     private fun generateNativeWav(converted: String) {
