@@ -144,6 +144,15 @@ class MainActivity : Activity() {
         root.addView(action("Pronunciation preview") {
             if (nativePreview.isInstalled) nativeInput() else convert()
         })
+        root.addView(action("Show Dhivehi IPA sounds") {
+            val source = editor.text.toString().trim()
+            if (source.isEmpty()) report("Enter Dhivehi text.")
+            else {
+                val result = DhivehiPhoneticEngine.analyze(source, corrections)
+                preview.text = result.ipaPreview
+                report("Showing Dhivehi phonetic sounds. These are not English letters.")
+            }
+        })
         root.addView(label("Speech engine"))
         engineList = Spinner(this).apply {
             contentDescription = "Select underlying speech engine"
@@ -458,8 +467,8 @@ class MainActivity : Activity() {
             isSingleLine = true
         }
         val sound = EditText(this).apply {
-            hint = "How the English voice should say it"
-            contentDescription = "Custom phonetic pronunciation"
+            hint = "Latin correction, or SPR:.1... for native phonemes"
+            contentDescription = "Pronunciation correction. Enter Latin or advanced SPR phonemes"
             inputType = InputType.TYPE_CLASS_TEXT
             isSingleLine = true
         }
