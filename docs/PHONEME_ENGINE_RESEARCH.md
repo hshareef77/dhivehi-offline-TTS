@@ -27,3 +27,20 @@ The Java/Kotlin Android app currently calls whichever Android TTS engine is inst
 ## Redistribution
 
 The original archive contains a signing keystore with embedded credentials and voice/data assets subject to separate license terms. Do not copy signing credentials into GitHub. Public repositories are public distribution regardless of whether the developer currently plans to use the app privately. The code-only import snapshot is intentionally separate from the application.
+
+## Direct native synthesizer implementation and host validation (21 Nov 2026)
+
+Using the exact **user-uploaded Free Eloquence ZIP**, extracted in a local working directory, the native OpenEVV English synthesis engine was compiled **successfully for Linux** with:
+
+```
+cd native/openevv
+make LANGS="lang/enus" RULES=bytecode -j8
+./build/evv -o hello.wav "assalaamu alaikum"
+./build/evv -o dhivehi-test.wav "dhivehi raajje maale"
+```
+
+The resulting files were inspected as RIFF/WAVE, **16-bit mono PCM, 11025 Hz**. This proves that the upstream native English engine can be built and synthesize speech on the test machine; it **does not** prove Android arm64 compilation, correct Dhivehi pronunciation, or screen-reader latency.
+
+The Android source now contains a direct JNI wrapper `EvvNative`, a streaming `NativeEloquenceBackend`, a direct `NativePreviewPlayer`, and a `NativeWaveExporter`. The optional `native_engine` GitHub workflow mode is configured to build the actual arm64 native library with restored English voice assets in an ephemeral runner. A successful native-enabled GitHub build still needs confirmation.
+
+The native voice speaks the **output of Thaana transliteration**, not Thaana bytes directly. Accurate phonemic mapping for Dhivehi retroflexes, glottal stops, vowel length, loanword rules, and variation remains an unsolved linguistic task. Do not advertise this as a completed Dhivehi phoneme model.
