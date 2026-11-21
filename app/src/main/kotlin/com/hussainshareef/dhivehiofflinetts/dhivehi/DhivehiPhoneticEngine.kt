@@ -102,76 +102,34 @@ object DhivehiPhoneticEngine {
         return Analysis(out.toString(), unsupported, approximate, count, ipaText.toString())
     }
 
+    /**
+     * Important: the speech renderer consumes the already parsed Dhivehi
+     * phone inventory. It never interprets Latin letters as English words.
+     */
     private fun wordToSpr(
         word: String,
         unsupported: MutableSet<Char>,
         approximate: MutableSet<Char>
     ): String {
-        val out = StringBuilder(word.length * 3)
-        var i = 0
-        var firstVowel = true
-        var onset = StringBuilder()
-        fun emitVowel(v: String) {
-            out.append(if (firstVowel) ".1" else ".0")
-            out.append(onset)
-            out.append(v)
-            onset = StringBuilder()
-            firstVowel = false
+        val parsed = DhivehiPhonology.analyzeWord(word)
+        val mapped = DhivehiEloquenceMapper.map(parsed)
+        // Identify unresolved Thaana marks instead of silently deleting them.
+        for (character in word) {
+            if (character in '\u0780'..'\u07BF' &&
+                character !in DhivehiPhonology.consonantIPA.keys &&
+                character !in setOf('ަ','ާ','ި','ީ','ު','ޫ','ެ','ޭ','ޮ','ޯ','ް')) {
+                unsupported.add(character)
+            }
+            if (character in approximateLetters) approximate.add(character)
         }
-        while (i < word.length) {
-            val ch = word[i]
-            val sound = consonants[ch]
-            if (sound != null) {
-                if (ch in approximateLetters) approximate.add(ch)
-                val mark = word.getOrNull(i + 1)
-                if (mark == SUKUN) {
-                    val next = word.getOrNull(i + 2)
-                    val after = next?.let { consonants[it] }
-                    if ((ch == 'އ' || ch == 'ށ') && !after.isNullOrEmpty()) {
-                        // Gemination: add the following consonant before
-                        // the naturally occurring next consonant.
-                        onset.append(after)
-                    } else if (ch == 'ތ' && !after.isNullOrEmpty()) {
-                        // Thaa-sukun has a palatalizing glide plus gemination
-                        // in some environments; 'y' is an approximation.
-                        approximate.add(ch)
-                        onset.append("y").append(after)
-                    } else if (ch == 'ނ' && !after.isNullOrEmpty() &&
-                        word[i + 2] in setOf('ނ', 'މ', 'ޏ', 'ޱ')) {
-                        // Noonu-sukun doubles a following nasal (not every stop).
-                        onset.append(after)
-                    } else if (ch in setOf('އ', 'ށ', 'ތ') && after.isNullOrEmpty()) {
-                        // Word-final closure is not correctly available in the
-                        // English voice's phonemes. Do not mispronounce it 'sh'.
-                        approximate.add(ch)
-                        if (ch == 'ތ') onset.append('y')
-                    } else {
-                        onset.append(sound)
-                    } else {
-                        // Word-final glottal closure: English voice lacks a
-                        // verified glottal-stop symbol; retain diagnostic.
-                        approximate.add(ch)
-                    }
-                    i += 2
-                } else {
-                    onset.append(sound)
-                    i++
-                }
-            } else if (ch in vowels) {
-                emitVowel(vowels.getValue(ch))
-                i++
-            } else if (ch == SUKUN) {
-                i++
-            } else {
-                unsupported.add(ch)
-                i++
+        // The voice acoustic inventory cannot represent all Dhivehi phones.
+        if (mapped.approximate.isNotEmpty()) {
+            // Add the actual Thaana sources of any approximate phones.
+            for (phone in parsed.phones) {
+                if (phone.ipa in mapped.approximate)
+                    phone.source.firstOrNull()?.let { approximate.add(it) }
             }
         }
-        if (onset.isNotEmpty()) {
-            if (firstVowel) out.append(".1")
-            out.append(onset)
-        }
-        if (out.isEmpty()) out.append(".1a")
-        return out.toString()
+        return mapped.spr
     }
 }
