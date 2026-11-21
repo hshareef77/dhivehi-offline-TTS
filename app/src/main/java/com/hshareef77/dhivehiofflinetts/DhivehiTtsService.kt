@@ -116,7 +116,21 @@ class DhivehiTtsService : TextToSpeechService() {
             callback.error()
             return
         }
-        val file = File.createTempFile("phonetic_", ".wav", cacheDir)
+        val file = try {
+            File.createTempFile("phonetic_", ".wav", cacheDir)
+        } catch (_: Exception) {
+            callback.error()
+            return
+        }
+        val selectedVoice = getSharedPreferences("tts_config", MODE_PRIVATE)
+            .getString("voice", null)
+        if (!selectedVoice.isNullOrBlank()) {
+            try {
+                val offline = tts.voices.orEmpty()
+                    .firstOrNull { it.name == selectedVoice && !it.isNetworkConnectionRequired }
+                if (offline != null) tts.voice = offline
+            } catch (_: Exception) { /* use installed engine's default voice */ }
+        }
         val finished = CountDownLatch(1)
         pending = finished
         val success = AtomicInteger(TextToSpeech.ERROR)
