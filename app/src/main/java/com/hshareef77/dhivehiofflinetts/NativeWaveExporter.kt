@@ -17,7 +17,7 @@ internal class NativeWaveExporter {
         if (h != 0L) try { EvvNative.stop(h) } catch (_: Throwable) {}
     }
 
-    fun generate(text: String, rate: Float, destination: File, preset: Int = 0, completed: (Boolean, String) -> Unit) {
+    fun generate(text: String, rate: Float, destination: File, preset: Int = 0, directPhonemes: Boolean = false, completed: (Boolean, String) -> Unit) {
         cancel()
         val token = generation.get()
         if (!EvvNative.loaded) return completed(false, "Native Eloquence not installed.")
@@ -35,6 +35,7 @@ internal class NativeWaveExporter {
                 if (handle == 0L) error("Native English voice data could not be loaded.")
                 active = handle
                 EvvNative.setParam(handle, 5, 1)
+                EvvNative.setParam(handle, 1, if (directPhonemes) 1 else 0)
                 NativeVoices.apply(handle, preset, rate)
                 if (!EvvNative.speak(handle, encoded)) error("Native voice refused this text.")
                 RandomAccessFile(destination, "rw").use { wave ->
