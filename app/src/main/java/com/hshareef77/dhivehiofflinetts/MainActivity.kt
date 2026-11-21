@@ -3,6 +3,8 @@ package com.hshareef77.dhivehiofflinetts
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.ComponentName
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -121,6 +123,8 @@ class MainActivity : Activity() {
         root.addView(speed)
         root.addView(action("Refresh voices") { populateVoices() })
         root.addView(action("Reload selected voice engine") { reloadEngine() })
+        root.addView(action("Enable experimental system TTS") { configureSystemSpeech(true) })
+        root.addView(action("Disable experimental system TTS") { configureSystemSpeech(false) })
         root.addView(action("Android TTS settings") {
             try {
                 startActivity(Intent("com.android.settings.TTS_SETTINGS"))
@@ -220,6 +224,46 @@ class MainActivity : Activity() {
         val result = DhivehiPronunciation.transliterate(input, corrections)
         preview.text = result
         return result
+    }
+
+    private fun configureSystemSpeech(enable: Boolean) {
+        if (enable) {
+            val delegatePackage = getSharedPreferences("tts_config", MODE_PRIVATE)
+                .getString("delegate_package", null)
+            if (!ready || delegatePackage.isNullOrBlank() || delegatePackage == packageName) {
+                report("Select and test a different installed offline speech engine first.")
+                return
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Experimental system speech")
+                .setMessage(
+                    "This is an unverified pronunciation adapter, not a real Dhivehi voice. " +
+                    "It may respond slowly or fail in screen readers. Keep your usual voice " +
+                    "available and do not set this as TalkBack's default before testing."
+                )
+                .setPositiveButton("Enable") { _, _ -> setSystemEngineEnabled(true) }
+                .setNegativeButton("Cancel", null)
+                .show()
+        } else {
+            setSystemEngineEnabled(false)
+        }
+    }
+
+    private fun setSystemEngineEnabled(enabled: Boolean) {
+        try {
+            val component = ComponentName(this, DhivehiTtsService::class.java)
+            packageManager.setComponentEnabledSetting(
+                component,
+                if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP
+            )
+            report(if (enabled)
+                "Experimental system TTS enabled. Test cautiously in Android TTS settings."
+                else "Experimental system TTS disabled.")
+        } catch (_: Exception) {
+            report("Unable to change experimental system speech setting.")
+        }
     }
 
     private fun reloadEngine() {
