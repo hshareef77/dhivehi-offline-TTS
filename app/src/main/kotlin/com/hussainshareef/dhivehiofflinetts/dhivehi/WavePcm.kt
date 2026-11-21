@@ -65,7 +65,7 @@ object WavePcm {
                     }
                     val after = start + len + (len and 1L)
                     if (after > limit) {
-                        if (after == limit + 1 && len and 1L == 1L) break
+                        if (after == limit + 1 && (len and 1L) == 1L) break
                         return null
                     }
                     wav.seek(after)
