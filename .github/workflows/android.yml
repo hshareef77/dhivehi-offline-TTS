@@ -5,6 +5,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      native_engine:
+        description: 'Compile actual OpenEVV JNI engine from upstream source for private evaluation'
+        type: boolean
+        default: false
       publish_preview:
         description: 'Publish signed preview APK to GitHub Releases after tests pass'
         type: boolean
@@ -25,10 +29,32 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Prepare native Eloquence source only for explicit manual builds
+        if: github.event_name == 'workflow_dispatch' && inputs.native_engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/trypsynth/evvdroid.git /tmp/native-source
+          # Restore the complete engine tree only in the runner's ephemeral
+          # checkout. IBM-derived voice assets are not committed to GitHub.
+          rsync -a /tmp/native-source/native/openevv/ third_party/eloquence-reference/native/openevv/
+          test -f third_party/eloquence-reference/native/openevv/lang/enus/rom.txt || \
+            test -d third_party/eloquence-reference/native/openevv/lang/enus
+          echo 'Native source prepared for this ephemeral build.'
+      - name: Install NDK for explicit native compilation
+        if: github.event_name == 'workflow_dispatch' && inputs.native_engine
+        shell: bash
+        run: |
+          yes | sdkmanager --install 'ndk;26.1.10909125' || true
+          test -x "${ANDROID_SDK_ROOT}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+          echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/26.1.10909125" >> "$GITHUB_ENV"
+      - name: Set native build mode
+        if: github.event_name == 'workflow_dispatch' && inputs.native_engine
+        run: echo "NATIVE_BUILD_ARGS=-PnativeEloquence=true" >> "$GITHUB_ENV"
       - name: Check Dhivehi pronunciation and WAV parser
-        run: gradle :app:testDebugUnitTest --stacktrace
+        run: gradle :app:testDebugUnitTest --stacktrace ${NATIVE_BUILD_ARGS:-}
       - name: Build debug APK
-        run: gradle :app:assembleDebug --stacktrace
+        run: gradle :app:assembleDebug --stacktrace ${NATIVE_BUILD_ARGS:-}
       - uses: actions/upload-artifact@v4
         with:
           name: dhivehi-phonetic-lab-debug
@@ -57,7 +83,7 @@ jobs:
           echo 'available=true' >> "$GITHUB_OUTPUT"
       - name: Build signed release APK
         if: steps.signing.outputs.available == 'true'
-        run: gradle :app:assembleRelease --stacktrace
+        run: gradle :app:assembleRelease --stacktrace ${NATIVE_BUILD_ARGS:-}
       - uses: actions/upload-artifact@v4
         if: steps.signing.outputs.available == 'true'
         with:
@@ -65,7 +91,7 @@ jobs:
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
       - name: Publish signed preview APK only on explicit manual request
-        if: github.event_name == 'workflow_dispatch' && inputs.publish_preview && steps.signing.outputs.available == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_preview && !inputs.native_engine && steps.signing.outputs.available == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
