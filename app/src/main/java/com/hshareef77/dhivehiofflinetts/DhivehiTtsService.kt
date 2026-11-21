@@ -9,6 +9,7 @@ import android.speech.tts.TextToSpeechService
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import com.hussainshareef.dhivehiofflinetts.dhivehi.DhivehiPronunciation
+import com.hussainshareef.dhivehiofflinetts.dhivehi.WavePcm
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.Locale
@@ -158,71 +159,18 @@ class DhivehiTtsService : TextToSpeechService() {
         }
     }
 
-    /**
-     * Reads standard little-endian RIFF WAVE (uncompressed PCM 16-bit only).
-     * Skips arbitrary metadata chunks and enforces strict format bounds.
-     */
+    /** Streams verified PCM WAVE data in bounded buffers to Android speech. */
     private fun writeWav(file: File, callback: SynthesisCallback): Boolean {
-        if (!file.isFile || file.length() < 44L || file.length() > 48L * 1024 * 1024) return false
+        val header = WavePcm.readHeader(file) ?: return false
+        if (callback.start(
+                header.sampleRate, AudioFormat.ENCODING_PCM_16BIT, header.channels
+            ) != TextToSpeech.SUCCESS
+        ) return false
         RandomAccessFile(file, "r").use { wav ->
-            fun four(): String {
-                val bytes = ByteArray(4)
-                wav.readFully(bytes)
-                return String(bytes, Charsets.US_ASCII)
-            }
-            fun uint(): Long {
-                val a = wav.readUnsignedByte()
-                val b = wav.readUnsignedByte()
-                val c = wav.readUnsignedByte()
-                val d = wav.readUnsignedByte()
-                return (a or (b shl 8) or (c shl 16) or (d shl 24)).toLong() and 0xffffffffL
-            }
-            fun ushort(): Int {
-                val a = wav.readUnsignedByte()
-                val b = wav.readUnsignedByte()
-                return a or (b shl 8)
-            }
-            if (four() != "RIFF") return false
-            uint()
-            if (four() != "WAVE") return false
-            var format = -1
-            var channels = 0
-            var rate = 0
-            var bits = 0
-            var dataAt = -1L
-            var dataSize = 0L
-            while (wav.filePointer + 8 <= wav.length()) {
-                val type = four()
-                val len = uint()
-                val at = wav.filePointer
-                if (len > wav.length() - at) return false
-                when (type) {
-                    "fmt " -> {
-                        if (len < 16) return false
-                        format = ushort()
-                        channels = ushort()
-                        rate = uint().toInt()
-                        uint() // byte rate
-                        ushort() // block align
-                        bits = ushort()
-                    }
-                    "data" -> {
-                        dataAt = at
-                        dataSize = len
-                    }
-                }
-                val next = at + len + (len and 1L)
-                if (next > wav.length()) break
-                wav.seek(next)
-                if (dataAt >= 0 && format >= 0) break
-            }
-            if (format != 1 || bits != 16 || channels !in 1..2 ||
-                rate !in 8000..48000 || dataAt < 0 || dataSize <= 0) return false
-            if (callback.start(rate, AudioFormat.ENCODING_PCM_16BIT, channels) != TextToSpeech.SUCCESS) return false
-            wav.seek(dataAt)
+            wav.seek(header.dataOffset)
             val buffer = ByteArray(min(4096, callback.maxBufferSize.coerceAtLeast(1)))
-            var left = dataSize
-            while (left > 0 && !stopRequested.get()) {
+            var left = header.dataLength
+            while (left > 0L && !stopRequested.get()) {
                 val count = wav.read(buffer, 0, min(left, buffer.size.toLong()).toInt())
                 if (count <= 0) return false
                 if (callback.audioAvailable(buffer, 0, count) != TextToSpeech.SUCCESS) return false
