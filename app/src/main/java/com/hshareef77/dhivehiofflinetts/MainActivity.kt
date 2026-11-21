@@ -37,6 +37,7 @@ class MainActivity : Activity() {
     private lateinit var speed: SeekBar
     private lateinit var voiceList: Spinner
     private lateinit var engineList: Spinner
+    private lateinit var nativeVoiceList: Spinner
     private var availableEngines = listOf<TextToSpeech.EngineInfo>()
     private var availableVoices = listOf<Voice>()
     private var activeSpeechSerial = 0
@@ -90,9 +91,28 @@ class MainActivity : Activity() {
         root.addView(action("Speak") {
             if (nativePreview.isInstalled) {
                 val text = convert()
-                if (text.isNotBlank()) nativePreview.play(text, (speed.progress + 5) / 15f)
+                if (text.isNotBlank()) nativePreview.play(text, (speed.progress + 5) / 15f, nativeVoiceList.selectedItemPosition.coerceIn(0, 8))
             } else speak(false)
         })
+        root.addView(label("Native Eloquence voice"))
+        nativeVoiceList = Spinner(this).apply {
+            contentDescription = "Native Eloquence voice"
+            adapter = ArrayAdapter(this@MainActivity,
+                android.R.layout.simple_spinner_dropdown_item, NativeVoices.names)
+            setSelection(getSharedPreferences("tts_config", MODE_PRIVATE)
+                .getInt("native_preset", 0).coerceIn(0, 8))
+            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: android.widget.AdapterView<*>?, view: android.view.View?,
+                    position: Int, id: Long
+                ) {
+                    getSharedPreferences("tts_config", MODE_PRIVATE).edit()
+                        .putInt("native_preset", position).apply()
+                }
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+            }
+        }
+        root.addView(nativeVoiceList)
         root.addView(action("Test native Eloquence voice") {
             val text = convert()
             if (text.isNotBlank()) nativePreview.play(text, (speed.progress + 5) / 15f)
@@ -312,7 +332,7 @@ class MainActivity : Activity() {
         val path = File(cacheDir, "native-eloquence-${System.currentTimeMillis()}.wav")
         generated = path
         report("Generating native Eloquence audio.")
-        nativeExporter.generate(converted, (speed.progress + 5) / 15f, path) { success, result ->
+        nativeExporter.generate(converted, (speed.progress + 5) / 15f, path, nativeVoiceList.selectedItemPosition.coerceIn(0, 8)) { success, result ->
             ui.post {
                 if (isFinishing || isDestroyed) return@post
                 if (success && generated === path) {
