@@ -127,11 +127,25 @@ object DhivehiPhoneticEngine {
                 if (mark == SUKUN) {
                     val next = word.getOrNull(i + 2)
                     val after = next?.let { consonants[it] }
-                    if ((ch == 'އ' || ch == 'ށ' || ch == 'ނ') && !after.isNullOrEmpty()) {
-                        // Gemination represented by a repeated onset segment;
-                        // actual consonant timing needs audio verification.
+                    if ((ch == 'އ' || ch == 'ށ') && !after.isNullOrEmpty()) {
+                        // Gemination: add the following consonant before
+                        // the naturally occurring next consonant.
                         onset.append(after)
-                    } else if (ch != 'އ') {
+                    } else if (ch == 'ތ' && !after.isNullOrEmpty()) {
+                        // Thaa-sukun has a palatalizing glide plus gemination
+                        // in some environments; 'y' is an approximation.
+                        approximate.add(ch)
+                        onset.append("y").append(after)
+                    } else if (ch == 'ނ' && !after.isNullOrEmpty() &&
+                        word[i + 2] in setOf('ނ', 'މ', 'ޏ', 'ޱ')) {
+                        // Noonu-sukun doubles a following nasal (not every stop).
+                        onset.append(after)
+                    } else if (ch in setOf('އ', 'ށ', 'ތ') && after.isNullOrEmpty()) {
+                        // Word-final closure is not correctly available in the
+                        // English voice's phonemes. Do not mispronounce it 'sh'.
+                        approximate.add(ch)
+                        if (ch == 'ތ') onset.append('y')
+                    } else {
                         onset.append(sound)
                     } else {
                         // Word-final glottal closure: English voice lacks a
