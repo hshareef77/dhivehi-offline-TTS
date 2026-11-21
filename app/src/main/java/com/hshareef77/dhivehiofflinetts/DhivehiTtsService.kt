@@ -9,6 +9,7 @@ import android.speech.tts.TextToSpeechService
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import com.hussainshareef.dhivehiofflinetts.dhivehi.DhivehiPronunciation
+import com.hussainshareef.dhivehiofflinetts.dhivehi.DhivehiPhoneticEngine
 import com.hussainshareef.dhivehiofflinetts.dhivehi.WavePcm
 import java.io.File
 import java.io.RandomAccessFile
@@ -111,19 +112,27 @@ class DhivehiTtsService : TextToSpeechService() {
                 if (word.length <= 100) corrections[word] = json.optString(word)
             }
         } catch (_: Exception) { /* speak without user corrections */ }
+        // Real direct-phoneme path: analyze Thaana into SPR instructions
+        // and enable OpenEVV's native pronunciation-annotation input mode.
+        // Generic Android TTS providers never receive these instructions.
+        if (nativeBackend.available && nativeBackend.open()) {
+            val result = DhivehiPhoneticEngine.analyze(raw, corrections)
+            val nativeText = result.annotated
+            if (nativeText.isBlank() || nativeText.length > 3800) {
+                callback.error()
+                return
+            }
+            if (nativeBackend.synthesize(
+                    nativeText, request.speechRate, request.pitch, callback,
+                    getSharedPreferences("tts_config", MODE_PRIVATE)
+                        .getInt("native_preset", 0).coerceIn(0, 8), true)) {
+                callback.done()
+            } else callback.error()
+            return
+        }
         val text = DhivehiPronunciation.transliterate(raw, corrections)
         if (text.isBlank() || text.length >= TextToSpeech.getMaxSpeechInputLength()) {
             callback.error()
-            return
-        }
-        // Native PCM streaming takes priority. It requires libevvjni.so built
-        // with the language engine: no intermediate WAV or system TTS callback.
-        if (nativeBackend.available && nativeBackend.open()) {
-            if (nativeBackend.synthesize(text, request.speechRate, request.pitch, callback,
-                    getSharedPreferences("tts_config", MODE_PRIVATE)
-                        .getInt("native_preset", 0).coerceIn(0, 8))) {
-                callback.done()
-            } else callback.error()
             return
         }
         // Compatibility mode for APKs built without a native engine.
