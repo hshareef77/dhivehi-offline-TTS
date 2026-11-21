@@ -43,6 +43,14 @@ object DhivehiPhonology {
         var i = 0
         while (i < word.length) {
             val c = word[i]
+            // A bare noonu before a stop can indicate a single prenasalized
+            // consonant, as distinct from a full /n/ + stop sequence.
+            if (c == 'ނ' && word.getOrNull(i + 1) in setOf('ބ','ޕ','ތ','ދ','ޓ','ޑ','ކ','ގ','ޗ','ޖ')) {
+                phones.add(Phone("ⁿ", false, "ނ"))
+                warnings.add("Prenasalization timing needs a Dhivehi speaker review.")
+                i++
+                continue
+            }
             if (c == 'އ' && i + 1 < word.length && word[i + 1] in vowelIPA) {
                 // Alifu is a carrier for a vowel, not a consonant.
                 i++
@@ -56,16 +64,25 @@ object DhivehiPhonology {
             }
             if (c in consonantIPA) {
                 if (i + 1 < word.length && word[i + 1] == SUKUN) {
-                    if (c == 'އ' || c == 'ށ' || c == 'ނ') {
+                    if (c == 'އ' || c == 'ށ' || c == 'ނ' || c == 'ތ') {
                         val following = word.getOrNull(i + 2)
                         val next = following?.let { consonantIPA[it] }.orEmpty()
                         if (next.isNotEmpty()) {
-                            // Simplified rule: double following consonant.
-                            // Nasal assimilation and word-final cases need review.
-                            phones.add(Phone(next, true, "$cް"))
-                        } else if (c == 'އ' || c == 'ށ') {
+                            // Alifu and shaviyani sukun regularly geminate
+                            // an immediately following consonant. Noonu sukun
+                            // is used for geminate nasals. Thaa sukun can add
+                            // a palatal glide before consonant lengthening.
+                            if (c == 'ތ') phones.add(Phone("j", false, "ތް"))
+                            if (c == 'ނ' && next !in setOf("n", "m", "ɲ", "ɳ")) {
+                                phones.add(Phone("n", false, "ން"))
+                                warnings.add("Non-nasal following noonu-sukun: check assimilation.")
+                            } else {
+                                phones.add(Phone(next, true, "$cް"))
+                            }
+                        } else if (c == 'އ' || c == 'ށ' || c == 'ތ') {
+                            if (c == 'ތ') phones.add(Phone("j", false, "ތް"))
                             phones.add(Phone("ʔ", false, "$cް"))
-                            warnings.add("Word-final glottal stop needs acoustic verification.")
+                            warnings.add("Word-final closure is approximate and context-dependent.")
                         } else {
                             phones.add(Phone("n", false, "$cް"))
                         }
