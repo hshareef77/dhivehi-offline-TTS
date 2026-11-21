@@ -33,7 +33,7 @@ internal class NativeEloquenceBackend {
      * Called only on Android's synthesis worker. onStop may race safely:
      * handle lifetime is held until service destruction after synthesis.
      */
-    fun synthesize(phonetics: String, speed: Int, pitch: Int, callback: SynthesisCallback, preset: Int = 0): Boolean {
+    fun synthesize(phonetics: String, speed: Int, pitch: Int, callback: SynthesisCallback, preset: Int = 0, directPhonemes: Boolean = false): Boolean {
         stop.set(false)
         if (!open() || stop.get()) return false
         val h = handle
@@ -44,6 +44,7 @@ internal class NativeEloquenceBackend {
             // Voice scratch/current parameters documented in upstream Eci.kt.
             // ECI rate is not linearly equivalent to Android's 100=1x; this is
             // an initial conservative calibration for listening experiments.
+            EvvNative.setParam(h, 1, if (directPhonemes) 1 else 0)
             NativeVoices.apply(h, preset, speed / 100f, pitch / 100f)
             if (!EvvNative.speak(h, data)) return false
             if (callback.start(11025, AudioFormat.ENCODING_PCM_16BIT, 1) != TextToSpeech.SUCCESS) {
