@@ -1,9 +1,10 @@
-name: Android Debug APK
+name: Android APK build and pronunciation tests
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,15 +17,45 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
-      - name: Install Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Test Dhivehi pronunciation frontend
+      - name: Check Dhivehi pronunciation and WAV parser
         run: gradle :app:testDebugUnitTest --stacktrace
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: dhivehi-offline-tts-prototype
+          name: dhivehi-phonetic-lab-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - name: Configure permanent Android release signing
+        id: signing
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 || secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || secrets.KEY_PASSWORD }}
+        run: |
+          if [[ -z "$KEYSTORE_B64" || -z "$STORE_PASSWORD" || -z "$KEY_ALIAS" || -z "$KEY_PASSWORD" ]]; then
+            echo 'No complete release signing secrets found. Skipping signed APK.'
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/haluvi-release-keystore.p12"
+          chmod 600 "$RUNNER_TEMP/haluvi-release-keystore.p12"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/haluvi-release-keystore.p12" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo 'available=true' >> "$GITHUB_OUTPUT"
+      - name: Build signed release APK
+        if: steps.signing.outputs.available == 'true'
+        run: gradle :app:assembleRelease --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: steps.signing.outputs.available == 'true'
+        with:
+          name: dhivehi-phonetic-lab-signed
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
