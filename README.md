@@ -22,7 +22,7 @@ See [system-engine source](app/src/main/java/com/hshareef77/dhivehiofflinetts/Dh
 
 ## APK builds and signing
 
-GitHub Actions executes JVM tests and builds a debug APK on each main-branch push. If a complete set of keystore, password, alias and key-password secrets exists, the workflow additionally builds a signed release APK (without copying the key into the repository). Accepted secret name pairs: `ANDROID_KEYSTORE_BASE64` or `KEYSTORE_BASE64`; `ANDROID_KEYSTORE_PASSWORD` or `KEYSTORE_PASSWORD`; `ANDROID_KEY_ALIAS` or `KEY_ALIAS`; `ANDROID_KEY_PASSWORD` or `KEY_PASSWORD`. The release build is skipped if any required value is missing. Successful build status is **not yet confirmed**.
+GitHub Actions executes JVM tests and builds a debug APK on each main-branch push. In Actions → Android APK build and pronunciation tests → Run workflow, a manual `publish_preview` switch publishes a **prerelease** to the Releases page only if tests, signed APK build, and configured signing secrets succeed. If a complete set of keystore, password, alias and key-password secrets exists, the workflow additionally builds a signed release APK (without copying the key into the repository). Accepted secret name pairs: `ANDROID_KEYSTORE_BASE64` or `KEYSTORE_BASE64`; `ANDROID_KEYSTORE_PASSWORD` or `KEYSTORE_PASSWORD`; `ANDROID_KEY_ALIAS` or `KEY_ALIAS`; `ANDROID_KEY_PASSWORD` or `KEY_PASSWORD`. The release build is skipped if any required value is missing. Successful build status is **not yet confirmed**.
 
 ## Development sequence
 
@@ -39,3 +39,9 @@ GitHub Actions executes JVM tests and builds a debug APK on each main-branch pus
 Install a working Android text-to-speech engine first. In Android text-to-speech settings choose the desired engine. Open this app, enter Dhivehi text, select **Show pronunciation** and then **Speak**. **Generate audio** requests WAV synthesis from the installed engine and opens Android's file-saving interface when completed.
 
 The legacy CSM model is not downloaded or used by this app.
+
+## Source and runtime limitations (November 2026)
+
+The exact user-provided Free Eloquence source ZIP is not present as a complete repository archive. The separate public reference snapshot does not contain the IBM-derived acoustic/language assets needed to run native OpenEVV. **No independent native Eloquence voice has been integrated or verified.** Current speech/audio output requires a separate installed offline TTS engine. The experimental system service is disabled by default for screen-reader safety; it buffers a WAV before playback and is not designed for low-latency navigation.
+
+Building and speech testing against a real Android device remain unverified in this chat. Do not label a generated artifact as a validated Dhivehi engine without an actual speech test.
