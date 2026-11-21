@@ -25,6 +25,13 @@ class DhivehiEloquenceMapperTest {
         assertEquals(".1ka.0ndu", DhivehiEloquenceMapper.map(word).spr)
         assertTrue(DhivehiEloquenceMapper.map(word).approximate.contains("ⁿ"))
     }
+    @Test fun leftmostHeavySyllableReceivesStress() {
+        val raw = DhivehiPhonology.analyzeWord("އަލާ")
+        assertEquals(".0a.1laa", DhivehiEloquenceMapper.map(raw).spr)
+        val withGeminate = DhivehiPhonology.analyzeWord("އައްސަލާމު")
+        assertEquals(".1a.0ssa.0laa.0mu", DhivehiEloquenceMapper.map(withGeminate).spr)
+    }
+
     @Test fun glottalStopNeedsAcousticWork() {
         val word = DhivehiPhonology.analyzeWord("ރަށް")
         val mapped = DhivehiEloquenceMapper.map(word)
