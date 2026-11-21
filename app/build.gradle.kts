@@ -29,3 +29,38 @@ android {
 dependencies {
     testImplementation("junit:junit:4.13.2")
 }
+
+
+/**
+ * Optional direct OpenEVV JNI build. The checked-in source reference deliberately
+ * omits language/acoustic data. To build a working native engine, supply those
+ * files locally under third_party/eloquence-reference/native/openevv before
+ * enabling -PnativeEloquence=true. Do not commit private voice resources.
+ */
+val nativeEloquence = providers.gradleProperty("nativeEloquence")
+    .map { it.equals("true", ignoreCase = true) }.orElse(false)
+val nativeOutput = layout.buildDirectory.dir("nativeEloquence/jniLibs")
+android.sourceSets.getByName("main").jniLibs.srcDir(nativeOutput)
+
+if (nativeEloquence.get()) {
+    val nativeRoot = rootProject.file("third_party/eloquence-reference/native")
+    val buildScript = nativeRoot.resolve("build-native.sh")
+    val languageModule = nativeRoot.resolve("openevv/lang/enus")
+    require(buildScript.exists() && languageModule.exists()) {
+        "Native Eloquence source and language assets are required for native build."
+    }
+    val buildEloquence by tasks.registering(Exec::class) {
+        group = "build"
+        description = "Compile actual Eloquence JNI synthesis engine for arm64 Android"
+        commandLine("bash", buildScript.absolutePath)
+        environment("ABIS", "arm64-v8a")
+        environment("RULES", "c")
+        environment("LANGS", "lang/enus")
+        environment("OUT", nativeOutput.get().asFile.absolutePath)
+        environment("ANDROID_NDK_HOME",
+            System.getenv("ANDROID_NDK_HOME")
+                ?: "${System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")}/ndk/26.1.10909125")
+        outputs.dir(nativeOutput)
+    }
+    tasks.named("preBuild").configure { dependsOn(buildEloquence) }
+}
