@@ -30,6 +30,7 @@ import java.util.Locale
 class MainActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
     private lateinit var editor: EditText
+    private lateinit var nativePreview: NativePreviewPlayer
     private lateinit var status: TextView
     private lateinit var preview: TextView
     private lateinit var speed: SeekBar
@@ -50,6 +51,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        nativePreview = NativePreviewPlayer(this) { message -> report(message) }
         loadCorrections()
         val pad = (16 * resources.displayMetrics.density).toInt()
         val root = LinearLayout(this).apply {
@@ -84,8 +86,17 @@ class MainActivity : Activity() {
                 type = "text/plain"
             }, importTextRequest)
         })
-        root.addView(action("Speak") { speak(false) })
-        root.addView(action("Stop") { tts?.stop(); audioRequestId = null; report("Stopped") })
+        root.addView(action("Speak") {
+            if (nativePreview.isInstalled) {
+                val text = convert()
+                if (text.isNotBlank()) nativePreview.play(text, (speed.progress + 5) / 15f)
+            } else speak(false)
+        })
+        root.addView(action("Test native Eloquence voice") {
+            val text = convert()
+            if (text.isNotBlank()) nativePreview.play(text, (speed.progress + 5) / 15f)
+        }
+        root.addView(action("Stop") { nativePreview.stop(); tts?.stop(); audioRequestId = null; report("Stopped") })
         root.addView(action("Generate audio") { speak(true) })
         root.addView(action("Pronunciation preview") { convert() })
         root.addView(label("Speech engine"))
@@ -121,6 +132,10 @@ class MainActivity : Activity() {
             })
         }
         root.addView(speed)
+        root.addView(action("Native engine status") {
+            report(if (nativePreview.isInstalled) "Native Eloquence library loaded. Test the native voice." else
+                "This APK does not contain the native Eloquence library. Use a native-enabled build.")
+        })
         root.addView(action("Refresh voices") { populateVoices() })
         root.addView(action("Reload selected voice engine") { reloadEngine() })
         root.addView(action("Enable experimental system TTS") { configureSystemSpeech(true) })
@@ -230,7 +245,8 @@ class MainActivity : Activity() {
         if (enable) {
             val delegatePackage = getSharedPreferences("tts_config", MODE_PRIVATE)
                 .getString("delegate_package", null)
-            if (!ready || delegatePackage.isNullOrBlank() || delegatePackage == packageName) {
+            if (!nativePreview.isInstalled &&
+                (!ready || delegatePackage.isNullOrBlank() || delegatePackage == packageName)) {
                 report("Select and test a different installed offline speech engine first.")
                 return
             }
@@ -449,6 +465,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        nativePreview.stop()
         tts?.stop()
         tts?.shutdown()
         tts = null
