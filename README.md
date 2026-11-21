@@ -4,7 +4,7 @@
 
 ## Current working design
 
-The app now lets you enter or import Thaana text, inspect an **experimental** Latin phonetic conversion, play it through the installed Android TTS engine, stop speech, save user-specific word pronunciation corrections offline, adjust speaking speed, and request WAV audio generation using the Android system TTS API. Automated JVM checks cover basic conversion, word overrides, mixed-script handling and sukun preservation. It uses the phone's currently selected TTS engine, so **install and select Eloquence in Android TTS settings** to hear the experiment with Eloquence voices.
+The app lets you enter or import Thaana text, inspect an **experimental** Latin phonetic conversion, play it with an installed Android TTS engine, choose among the selected engine's reported offline voices, stop speech, save per-word pronunciation corrections offline, adjust speaking speed, play longer text in bounded segments, and request WAV audio generation using the Android system TTS API. Automated JVM checks cover sample spellings, word overrides, basic sukun handling, mixed-script handling and chunking. WAV file generation currently has a text-length limit; long passages can be spoken but cannot yet be exported as one WAV. It uses the phone's currently selected TTS engine, so **install and select Eloquence in Android TTS settings** to hear the experiment with Eloquence voices.
 
 **Important:** The consolidated source-code changes have been committed and CI runs tests plus an APK build on pushes, but passing build status and physical-device speech testing have not yet been confirmed. The app does not yet include its own functioning embedded Eloquence engine. It will not generate correct Dhivehi speech until pronunciation rules and the voice/phoneme mappings have been tested and refined. English-language TTS voices are imperfect substitutes for Dhivehi.
 
@@ -12,7 +12,7 @@ The app now lets you enter or import Thaana text, inspect an **experimental** La
 
 An automated import of public [evvdroid](https://github.com/trypsynth/evvdroid) reference code has populated `third_party/eloquence-reference`. This is **not** a byte-identical upload of the user's supplied `free-eloquence-tts-source.zip`. The import excludes IBM-derived voice resources, proprietary-derived tables, signing credentials and build artifacts. See [import notice](third_party/eloquence-reference/IMPORT_NOTICE.md).
 
-## Development sequence
+Native phoneme feasibility notes: [docs/PHONEME_ENGINE_RESEARCH.md](docs/PHONEME_ENGINE_RESEARCH.md).\n\n## Development sequence
 
 1. Validate an Android debug build and the phonetic experiment against a real installed TTS voice.
 2. Build a reviewed Dhivehi consonant/vowel/sukun pronunciation corpus and automated unit tests.
