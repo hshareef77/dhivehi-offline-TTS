@@ -35,6 +35,7 @@ class MainActivity : Activity() {
     private var availableVoices = listOf<Voice>()
     private var activeSpeechSerial = 0
     private var audioRequestId: String? = null
+    private var savePending = false
     private var tts: TextToSpeech? = null
     private var ready = false
     private var generated: File? = null
@@ -110,6 +111,7 @@ class MainActivity : Activity() {
         }
         root.addView(speed)
         root.addView(action("Refresh voices") { populateVoices() })
+        root.addView(action("Reload selected voice engine") { reloadEngine() })
         root.addView(action("Android TTS settings") {
             try {
                 startActivity(Intent("com.android.settings.TTS_SETTINGS"))
@@ -121,6 +123,11 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this)
         scroll.addView(root)
         setContentView(scroll)
+        initializeTts()
+    }
+
+    private fun initializeTts() {
+        ready = false
         tts = TextToSpeech(applicationContext) { result ->
             ui.post {
                 ready = result == TextToSpeech.SUCCESS
@@ -131,7 +138,14 @@ class MainActivity : Activity() {
                         override fun onStart(utteranceId: String?) {}
                         override fun onDone(utteranceId: String?) {
                             if (utteranceId != null && utteranceId == audioRequestId) ui.post {
-                                if (!isFinishing && !isDestroyed && generated?.exists() == true) {
+                                audioRequestId = null
+                                if (!isFinishing && !isDestroyed && generated?.exists() == true && !savePending) {
+                                    val candidate = generated!!
+                                    if (!isWave(candidate)) {
+                                        report("The installed TTS engine did not produce a valid WAV audio file.")
+                                        return@post
+                                    }
+                                    savePending = true
                                     report("Audio ready. Select a file location.")
                                     startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                                         addCategory(Intent.CATEGORY_OPENABLE)
@@ -142,7 +156,12 @@ class MainActivity : Activity() {
                             }
                         }
                         override fun onError(utteranceId: String?) {
-                            ui.post { if (!isFinishing) report("Speech engine error. Try another voice.") }
+                            ui.post {
+                                if (!isFinishing) {
+                                    if (utteranceId == audioRequestId) audioRequestId = null
+                                    report("Speech engine error. Try another voice.")
+                                }
+                            }
                         }
                     })
                     if (languageStatus == TextToSpeech.LANG_MISSING_DATA ||
@@ -164,6 +183,25 @@ class MainActivity : Activity() {
         preview.text = result
         return result
     }
+
+    private fun reloadEngine() {
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
+        availableVoices = emptyList()
+        ready = false
+        report("Reloading selected TTS engine.")
+        initializeTts()
+    }
+
+    private fun isWave(file: File): Boolean = try {
+        file.inputStream().use { stream ->
+            val header = ByteArray(12)
+            val count = stream.read(header)
+            count == 12 && String(header, 0, 4, Charsets.US_ASCII) == "RIFF" &&
+                String(header, 8, 4, Charsets.US_ASCII) == "WAVE"
+        }
+    } catch (_: Exception) { false }
 
     private fun populateVoices() {
         val engine = tts ?: return
@@ -203,6 +241,7 @@ class MainActivity : Activity() {
         activeSpeechSerial = requestSerial
         audioRequestId = null
         if (toFile) {
+            savePending = false
             if (converted.length >= TextToSpeech.getMaxSpeechInputLength()) {
                 return report("Audio generation currently supports shorter passages. Use fewer than 4000 characters.")
             }
@@ -299,6 +338,7 @@ class MainActivity : Activity() {
     @Deprecated("ActivityResult callbacks used for document picker compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == saveRequest) savePending = false
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         try {
