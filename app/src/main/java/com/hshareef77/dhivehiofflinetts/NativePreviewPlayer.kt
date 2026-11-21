@@ -29,7 +29,7 @@ internal class NativePreviewPlayer(
     val isInstalled: Boolean get() = EvvNative.loaded
 
     @Synchronized
-    fun play(phoneticText: String, speed: Float, preset: Int = 0) {
+    fun play(phoneticText: String, speed: Float, preset: Int = 0, directPhonemes: Boolean = false) {
         stop()
         if (!EvvNative.loaded) {
             report("Native Eloquence engine is not installed in this APK.")
@@ -54,6 +54,7 @@ internal class NativePreviewPlayer(
                 if (handle == 0L) error("Native voice data is missing or could not be initialized.")
                 nativeHandle = handle
                 EvvNative.setParam(handle, 5, 1) // 11025 Hz mono
+                EvvNative.setParam(handle, 1, if (directPhonemes) 1 else 0)
                 NativeVoices.apply(handle, preset, speed)
                 if (!EvvNative.speak(handle, encoded)) error("Native engine refused this text.")
                 val format = AudioFormat.Builder()
