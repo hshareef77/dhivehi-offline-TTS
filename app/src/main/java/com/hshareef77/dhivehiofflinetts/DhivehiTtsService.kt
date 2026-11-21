@@ -29,6 +29,7 @@ import kotlin.math.min
  */
 class DhivehiTtsService : TextToSpeechService() {
     private val stopRequested = AtomicBoolean(false)
+    private val nativeBackend = NativeEloquenceBackend()
     private val engineReady = CountDownLatch(1)
     @Volatile private var healthy = false
     @Volatile private var delegate: TextToSpeech? = null
@@ -98,10 +99,6 @@ class DhivehiTtsService : TextToSpeechService() {
             return
         }
         val tts = delegate
-        if (!engineReady.await(8, TimeUnit.SECONDS) || !healthy || tts == null) {
-            callback.error()
-            return
-        }
         val corrections = linkedMapOf<String, String>()
         try {
             val json = org.json.JSONObject(
@@ -116,6 +113,19 @@ class DhivehiTtsService : TextToSpeechService() {
         } catch (_: Exception) { /* speak without user corrections */ }
         val text = DhivehiPronunciation.transliterate(raw, corrections)
         if (text.isBlank() || text.length >= TextToSpeech.getMaxSpeechInputLength()) {
+            callback.error()
+            return
+        }
+        // Native PCM streaming takes priority. It requires libevvjni.so built
+        // with the language engine: no intermediate WAV or system TTS callback.
+        if (nativeBackend.available && nativeBackend.open()) {
+            if (nativeBackend.synthesize(text, request.speechRate, request.pitch, callback)) {
+                callback.done()
+            } else callback.error()
+            return
+        }
+        // Compatibility mode for APKs built without a native engine.
+        if (!engineReady.await(8, TimeUnit.SECONDS) || !healthy || tts == null) {
             callback.error()
             return
         }
@@ -201,12 +211,14 @@ class DhivehiTtsService : TextToSpeechService() {
         stopRequested.set(true)
         pending?.countDown()
         delegate?.stop()
+        nativeBackend.interrupt()
     }
 
     override fun onDestroy() {
         onStop()
         delegate?.shutdown()
         delegate = null
+        nativeBackend.close()
         super.onDestroy()
     }
 }
