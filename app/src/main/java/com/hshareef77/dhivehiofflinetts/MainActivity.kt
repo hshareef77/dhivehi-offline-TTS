@@ -31,6 +31,7 @@ class MainActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
     private lateinit var editor: EditText
     private lateinit var nativePreview: NativePreviewPlayer
+    private val nativeExporter = NativeWaveExporter()
     private lateinit var status: TextView
     private lateinit var preview: TextView
     private lateinit var speed: SeekBar
@@ -96,8 +97,13 @@ class MainActivity : Activity() {
             val text = convert()
             if (text.isNotBlank()) nativePreview.play(text, (speed.progress + 5) / 15f)
         }
-        root.addView(action("Stop") { nativePreview.stop(); tts?.stop(); audioRequestId = null; report("Stopped") })
-        root.addView(action("Generate audio") { speak(true) })
+        root.addView(action("Stop") { nativePreview.stop(); nativeExporter.cancel(); tts?.stop(); audioRequestId = null; report("Stopped") })
+        root.addView(action("Generate audio") {
+            if (nativePreview.isInstalled) {
+                val converted = convert()
+                if (converted.isNotBlank()) generateNativeWav(converted)
+            } else speak(true)
+        }
         root.addView(action("Pronunciation preview") { convert() })
         root.addView(label("Speech engine"))
         engineList = Spinner(this).apply {
@@ -301,6 +307,27 @@ class MainActivity : Activity() {
         }
     } catch (_: Exception) { false }
 
+    private fun generateNativeWav(converted: String) {
+        nativeExporter.cancel()
+        val path = File(cacheDir, "native-eloquence-${System.currentTimeMillis()}.wav")
+        generated = path
+        report("Generating native Eloquence audio.")
+        nativeExporter.generate(converted, (speed.progress + 5) / 15f, path) { success, result ->
+            ui.post {
+                if (isFinishing || isDestroyed) return@post
+                if (success && generated === path) {
+                    savePending = true
+                    report("Native WAV ready. Select where to save it.")
+                    startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "audio/wav"
+                        putExtra(Intent.EXTRA_TITLE, "dhivehi-native-eloquence.wav")
+                    }, saveRequest)
+                } else report(result)
+            }
+        }
+    }
+
     private fun populateVoices() {
         val engine = tts ?: return
         try {
@@ -466,6 +493,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         nativePreview.stop()
+        nativeExporter.cancel()
         tts?.stop()
         tts?.shutdown()
         tts = null
