@@ -1,27 +1,29 @@
-# Dhivehi Offline TTS
+# Dhivehi Pronunciation Lab (Android)
 
-Accessible Android Kotlin prototype for offline Dhivehi text-to-speech.
+**Current goal:** explore fast, offline Dhivehi speech through the existing Eloquence-style voices, with a native accessible Android interface. The previous 6.6 GB CSM model and five-speaker offline narration prototype are **no longer the current project direction**.
 
-## Status (30 October 2026)
-- Initial Android project and accessible Thaana text editor.
-- Import UTF-8 TXT files using Android file picker.
-- Five voice selections reflecting the five-speaker online demo.
-- Import and play an existing audio file offline; pause, stop, change playback speed, and copy/export the original audio file (no WAV conversion).
-- Android GitHub Actions debug APK workflow.
-- **Speech generation is NOT implemented yet.** The user-tested CSM-1B Dhivehi model has not been demonstrated on 8 GB Android hardware, and there is no Android-native CSM runtime included.
-- No paid API or server connection in the prototype.
+## Current working design
 
-Model feasibility and testing requirements: [docs/MODEL_FEASIBILITY.md](docs/MODEL_FEASIBILITY.md).
+The app now lets you enter or import Thaana text, inspect a **basic experimental** Latin phonetic conversion, play the conversion through the phone's installed Android TTS engine, stop playback, and request audio generation and save it as WAV using the Android system TTS API. It uses the phone's currently selected TTS engine, so **install and select Eloquence in Android TTS settings** to hear the experiment with Eloquence voices.
 
-## Model
-https://huggingface.co/alakxender/csm-1b-dhivehi-5-spk-gd
+**Important:** The source-code changes have been committed, but a successful APK build and speech testing have not been confirmed. The app does not yet include its own functioning embedded Eloquence engine. It will not generate correct Dhivehi speech until pronunciation rules and the voice/phoneme mappings have been tested and refined. English-language TTS voices are imperfect substitutes for Dhivehi.
 
-Model weights total roughly 6.6 GB. Do not download them to Android until on-device execution is verified. A model's published license and any download terms must be checked before redistribution.
+## Source reference
 
-## Build
-GitHub Actions: **Android Debug APK** workflow (runs on push). Download the `dhivehi-offline-tts-prototype` artifact when successful.
+An automated import of public [evvdroid](https://github.com/trypsynth/evvdroid) reference code is under `third_party/eloquence-reference`. This is **not** a byte-identical upload of the user's supplied `free-eloquence-tts-source.zip`. The import excludes IBM-derived voice resources, proprietary-derived tables, signing credentials and build artifacts. See [import notice](third_party/eloquence-reference/IMPORT_NOTICE.md).
 
-Local build uses JDK 17 and Gradle 8.9: `gradle :app:assembleDebug`.
+## Development sequence
 
-## Planned
-Prove local Android speech synthesis with all required model components; test memory and voice quality on Samsung Galaxy S23 FE (8 GB RAM); add verified resumable download, synthesis, playback, WAV export, then optional system-wide Android TTS.
+1. Validate an Android debug build and the phonetic experiment against a real installed TTS voice.
+2. Build a reviewed Dhivehi consonant/vowel/sukun pronunciation corpus and automated unit tests.
+3. Add exact phoneme input mapping for Eloquence/OpenEVV; avoid assuming English transliteration is sufficient.
+4. Integrate a verified on-device speech backend and expose genuine Dhivehi (`dv-MV`) once it passes tests.
+5. Benchmark latency, rapid speech interruption, sentence segmentation, long text, voice controls and WAV output.
+6. Add a user pronunciation dictionary with accessible corrections and mixed Dhivehi/English handling.
+7. Evaluate redistributability separately before any public release of restricted voice assets.
+
+## How to test
+
+Install a working Android text-to-speech engine first. In Android text-to-speech settings choose the desired engine. Open this app, enter Dhivehi text, select **Show pronunciation** and then **Speak**. **Generate audio** requests WAV synthesis from the installed engine and opens Android's file-saving interface when completed.
+
+The legacy CSM model is not downloaded or used by this app.
