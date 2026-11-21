@@ -4,13 +4,13 @@
 
 ## Current working design
 
-The app now lets you enter or import Thaana text, inspect a **basic experimental** Latin phonetic conversion, play the conversion through the phone's installed Android TTS engine, stop playback, and request audio generation and save it as WAV using the Android system TTS API. It uses the phone's currently selected TTS engine, so **install and select Eloquence in Android TTS settings** to hear the experiment with Eloquence voices.
+The app now lets you enter or import Thaana text, inspect an **experimental** Latin phonetic conversion, play it through the installed Android TTS engine, stop speech, save user-specific word pronunciation corrections offline, adjust speaking speed, and request WAV audio generation using the Android system TTS API. Automated JVM checks cover basic conversion, word overrides, mixed-script handling and sukun preservation. It uses the phone's currently selected TTS engine, so **install and select Eloquence in Android TTS settings** to hear the experiment with Eloquence voices.
 
-**Important:** The source-code changes have been committed, but a successful APK build and speech testing have not been confirmed. The app does not yet include its own functioning embedded Eloquence engine. It will not generate correct Dhivehi speech until pronunciation rules and the voice/phoneme mappings have been tested and refined. English-language TTS voices are imperfect substitutes for Dhivehi.
+**Important:** The consolidated source-code changes have been committed and CI runs tests plus an APK build on pushes, but passing build status and physical-device speech testing have not yet been confirmed. The app does not yet include its own functioning embedded Eloquence engine. It will not generate correct Dhivehi speech until pronunciation rules and the voice/phoneme mappings have been tested and refined. English-language TTS voices are imperfect substitutes for Dhivehi.
 
 ## Source reference
 
-An automated import of public [evvdroid](https://github.com/trypsynth/evvdroid) reference code is under `third_party/eloquence-reference`. This is **not** a byte-identical upload of the user's supplied `free-eloquence-tts-source.zip`. The import excludes IBM-derived voice resources, proprietary-derived tables, signing credentials and build artifacts. See [import notice](third_party/eloquence-reference/IMPORT_NOTICE.md).
+An automated import of public [evvdroid](https://github.com/trypsynth/evvdroid) reference code has populated `third_party/eloquence-reference`. This is **not** a byte-identical upload of the user's supplied `free-eloquence-tts-source.zip`. The import excludes IBM-derived voice resources, proprietary-derived tables, signing credentials and build artifacts. See [import notice](third_party/eloquence-reference/IMPORT_NOTICE.md).
 
 ## Development sequence
 
