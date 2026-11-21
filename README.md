@@ -12,7 +12,19 @@ The app lets you enter or import Thaana text, inspect an **experimental** Latin 
 
 An automated import of public [evvdroid](https://github.com/trypsynth/evvdroid) reference code has populated `third_party/eloquence-reference`. This is **not** a byte-identical upload of the user's supplied `free-eloquence-tts-source.zip`. The import excludes IBM-derived voice resources, proprietary-derived tables, signing credentials and build artifacts. See [import notice](third_party/eloquence-reference/IMPORT_NOTICE.md).
 
-Native phoneme feasibility notes: [docs/PHONEME_ENGINE_RESEARCH.md](docs/PHONEME_ENGINE_RESEARCH.md).\n\n## Development sequence
+Native phoneme feasibility notes: [docs/PHONEME_ENGINE_RESEARCH.md](docs/PHONEME_ENGINE_RESEARCH.md).\n\n## Experimental system-wide TTS adapter (new)
+
+A standard Android `TextToSpeechService` is registered but **disabled by default** so it cannot accidentally replace a screen reader's reliable voice. It exposes an experimental `dv-MV` voice by translating Thaana to an approximate Latin pronunciation, delegating synthesis to a **different installed offline-capable TTS engine**, verifying its WAV PCM output, and relaying it to Android's speech callback.
+
+In the app: choose an underlying installed speech engine, tap **Use selected engine**, choose its offline voice, and test **Speak**. Only then can you choose **Enable experimental system TTS**. The app also provides **Disable experimental system TTS**. Never select this experimental service as TalkBack's only voice during initial testing; keep a known-working TTS engine installed. This prototype is **not** a native Eloquence integration and its utterances may start slowly because it synthesizes whole WAV files before emitting audio. Do not depend on it for daily screen-reader navigation yet.
+
+See [system-engine source](app/src/main/java/com/hshareef77/dhivehiofflinetts/DhivehiTtsService.kt) and [WAV parser](app/src/main/kotlin/com/hussainshareef/dhivehiofflinetts/dhivehi/WavePcm.kt).
+
+## APK builds and signing
+
+GitHub Actions executes JVM tests and builds a debug APK on each main-branch push. If a complete set of keystore, password, alias and key-password secrets exists, the workflow additionally builds a signed release APK (without copying the key into the repository). Accepted secret name pairs: `ANDROID_KEYSTORE_BASE64` or `KEYSTORE_BASE64`; `ANDROID_KEYSTORE_PASSWORD` or `KEYSTORE_PASSWORD`; `ANDROID_KEY_ALIAS` or `KEY_ALIAS`; `ANDROID_KEY_PASSWORD` or `KEY_PASSWORD`. The release build is skipped if any required value is missing. Successful build status is **not yet confirmed**.
+
+## Development sequence
 
 1. Validate an Android debug build and the phonetic experiment against a real installed TTS voice.
 2. Build a reviewed Dhivehi consonant/vowel/sukun pronunciation corpus and automated unit tests.
