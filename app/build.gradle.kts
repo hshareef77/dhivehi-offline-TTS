@@ -5,7 +5,7 @@ plugins {
 android {
     namespace = "com.hussainshareef.dhivehiofflinetts"
     compileSdk = 35
-    defaultConfig { applicationId = "com.hussainshareef.dhivehiofflinetts"; minSdk = 26; targetSdk = 35; versionCode = 3; versionName = "0.3-native-preview" }
+    defaultConfig { applicationId = "com.hussainshareef.dhivehiofflinetts"; minSdk = 26; targetSdk = 35; versionCode = 4; versionName = "0.4-native-voices" }
 
     val keyStorePath = System.getenv("ANDROID_KEYSTORE_PATH")
     if (!keyStorePath.isNullOrBlank()) {
