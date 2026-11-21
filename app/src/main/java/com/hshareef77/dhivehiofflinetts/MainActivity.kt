@@ -13,9 +13,13 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Spinner
+import android.widget.ArrayAdapter
+import android.speech.tts.Voice
 import android.widget.SeekBar
 import android.widget.TextView
 import com.hussainshareef.dhivehiofflinetts.dhivehi.DhivehiPronunciation
+import com.hussainshareef.dhivehiofflinetts.dhivehi.SpeechChunks
 import org.json.JSONObject
 import java.io.File
 import java.util.Locale
@@ -27,6 +31,10 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var preview: TextView
     private lateinit var speed: SeekBar
+    private lateinit var voiceList: Spinner
+    private var availableVoices = listOf<Voice>()
+    private var activeSpeechSerial = 0
+    private var audioRequestId: String? = null
     private var tts: TextToSpeech? = null
     private var ready = false
     private var generated: File? = null
@@ -70,9 +78,16 @@ class MainActivity : Activity() {
             }, importTextRequest)
         })
         root.addView(action("Speak") { speak(false) })
-        root.addView(action("Stop") { tts?.stop(); report("Stopped") })
+        root.addView(action("Stop") { tts?.stop(); audioRequestId = null; report("Stopped") })
         root.addView(action("Generate audio") { speak(true) })
         root.addView(action("Pronunciation preview") { convert() })
+        root.addView(label("Voice"))
+        voiceList = Spinner(this).apply {
+            contentDescription = "Select voice"
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
+                listOf("Loading voices"))
+        }
+        root.addView(voiceList)
         preview = label("Converted pronunciation will appear here.")
         preview.isFocusable = true
         root.addView(preview)
@@ -91,6 +106,7 @@ class MainActivity : Activity() {
             })
         }
         root.addView(speed)
+        root.addView(action("Refresh voices") { populateVoices() })
         root.addView(action("Android TTS settings") {
             try {
                 startActivity(Intent("com.android.settings.TTS_SETTINGS"))
@@ -107,10 +123,11 @@ class MainActivity : Activity() {
                 ready = result == TextToSpeech.SUCCESS
                 if (ready) {
                     val languageStatus = tts?.setLanguage(Locale.US)
+                    populateVoices()
                     tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                         override fun onStart(utteranceId: String?) {}
                         override fun onDone(utteranceId: String?) {
-                            if (utteranceId?.startsWith("audio_") == true) ui.post {
+                            if (utteranceId != null && utteranceId == audioRequestId) ui.post {
                                 if (!isFinishing && !isDestroyed && generated?.exists() == true) {
                                     report("Audio ready. Select a file location.")
                                     startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
@@ -145,26 +162,66 @@ class MainActivity : Activity() {
         return result
     }
 
+    private fun populateVoices() {
+        val engine = tts ?: return
+        try {
+            val list = engine.voices.orEmpty()
+                .filter { !it.isNetworkConnectionRequired }
+                .sortedWith(compareBy({ it.locale.language != "en" }, { it.name }))
+            availableVoices = list
+            voiceList.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
+                if (list.isEmpty()) listOf("No offline voice found")
+                else list.map { "${it.name} (${it.locale.displayName})" })
+            val remembered = getPreferences(MODE_PRIVATE).getString("voice", null)
+            val selected = list.indexOfFirst { it.name == remembered }
+            if (selected >= 0) voiceList.setSelection(selected)
+        } catch (_: Exception) {
+            availableVoices = emptyList()
+            report("Unable to enumerate installed voices.")
+        }
+    }
+
+    private fun applySelectedVoice(engine: TextToSpeech) {
+        val voice = availableVoices.getOrNull(voiceList.selectedItemPosition) ?: return
+        if (engine.setVoice(voice) == TextToSpeech.SUCCESS) {
+            getPreferences(MODE_PRIVATE).edit().putString("voice", voice.name).apply()
+        }
+    }
+
     private fun speak(toFile: Boolean) {
         if (!ready) return report("Speech engine not ready.")
         val converted = convert()
         if (converted.isEmpty()) return
-        // Some Android TTS implementations refuse inputs exceeding 4000 chars.
-        if (converted.length >= TextToSpeech.getMaxSpeechInputLength()) {
-            return report("Text too long. Please try a shorter passage.")
-        }
         val engine = tts ?: return
         engine.stop()
+        applySelectedVoice(engine)
         engine.setSpeechRate((speed.progress + 5) / 15f)
         requestSerial++
-        val id = if (toFile) "audio_$requestSerial" else "preview_$requestSerial"
+        activeSpeechSerial = requestSerial
+        audioRequestId = null
         if (toFile) {
+            if (converted.length >= TextToSpeech.getMaxSpeechInputLength()) {
+                return report("Audio generation currently supports shorter passages. Use fewer than 4000 characters.")
+            }
             generated = File(cacheDir, "dhivehi-$requestSerial.wav")
+            val id = "audio_$requestSerial"
+            audioRequestId = id
             val rc = engine.synthesizeToFile(converted, Bundle(), generated!!, id)
-            report(if (rc == TextToSpeech.SUCCESS) "Generating audio." else "Audio generation is unavailable with this engine.")
+            report(if (rc == TextToSpeech.SUCCESS) "Generating audio." else "Audio generation unavailable with this engine.")
         } else {
-            val rc = engine.speak(converted, TextToSpeech.QUEUE_FLUSH, Bundle(), id)
-            if (rc != TextToSpeech.SUCCESS) report("Unable to start speech.")
+            val maxLength = minOf(1800, TextToSpeech.getMaxSpeechInputLength() - 16)
+            val chunks = SpeechChunks.split(converted, maxLength)
+            var failed = false
+            for ((index, chunk) in chunks.withIndex()) {
+                val rc = engine.speak(
+                    chunk,
+                    if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD,
+                    Bundle(),
+                    "preview_${requestSerial}_$index"
+                )
+                if (rc != TextToSpeech.SUCCESS) { failed = true; break }
+            }
+            if (failed) report("Unable to queue speech in the selected engine.")
         }
     }
 
