@@ -12,6 +12,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.text.InputType
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -21,6 +22,7 @@ import android.speech.tts.Voice
 import android.widget.SeekBar
 import android.widget.TextView
 import com.hussainshareef.dhivehiofflinetts.dhivehi.DhivehiPronunciation
+import com.hussainshareef.dhivehiofflinetts.dhivehi.DhivehiPhoneticEngine
 import com.hussainshareef.dhivehiofflinetts.dhivehi.SpeechChunks
 import org.json.JSONObject
 import java.io.File
@@ -38,6 +40,7 @@ class MainActivity : Activity() {
     private lateinit var voiceList: Spinner
     private lateinit var engineList: Spinner
     private lateinit var nativeVoiceList: Spinner
+    private lateinit var directPhonemes: CheckBox
     private var availableEngines = listOf<TextToSpeech.EngineInfo>()
     private var availableVoices = listOf<Voice>()
     private var activeSpeechSerial = 0
@@ -90,10 +93,22 @@ class MainActivity : Activity() {
         })
         root.addView(action("Speak") {
             if (nativePreview.isInstalled) {
-                val text = convert()
-                if (text.isNotBlank()) nativePreview.play(text, (speed.progress + 5) / 15f, nativeVoiceList.selectedItemPosition.coerceIn(0, 8))
+                val text = nativeInput()
+                if (text.isNotBlank()) nativePreview.play(text, (speed.progress + 5) / 15f,
+                    nativeVoiceList.selectedItemPosition.coerceIn(0, 8), directPhonemes.isChecked)
             } else speak(false)
         })
+        directPhonemes = CheckBox(this).apply {
+            text = "Direct Dhivehi phonemes (experimental)"
+            isChecked = getSharedPreferences("tts_config", MODE_PRIVATE)
+                .getBoolean("direct_phonemes", true)
+            contentDescription = "Direct Dhivehi phonemes, experimental"
+            setOnCheckedChangeListener { _, checked ->
+                getSharedPreferences("tts_config", MODE_PRIVATE).edit()
+                    .putBoolean("direct_phonemes", checked).apply()
+            }
+        }
+        root.addView(directPhonemes)
         root.addView(label("Native Eloquence voice"))
         nativeVoiceList = Spinner(this).apply {
             contentDescription = "Native Eloquence voice"
@@ -114,19 +129,21 @@ class MainActivity : Activity() {
         }
         root.addView(nativeVoiceList)
         root.addView(action("Test native Eloquence voice") {
-            val text = convert()
+            val text = nativeInput()
             if (text.isNotBlank()) nativePreview.play(
                 text, (speed.progress + 5) / 15f,
-                nativeVoiceList.selectedItemPosition.coerceIn(0, 8))
+                nativeVoiceList.selectedItemPosition.coerceIn(0, 8), directPhonemes.isChecked)
         })
         root.addView(action("Stop") { nativePreview.stop(); nativeExporter.cancel(); tts?.stop(); audioRequestId = null; report("Stopped") })
         root.addView(action("Generate audio") {
             if (nativePreview.isInstalled) {
-                val converted = convert()
+                val converted = nativeInput()
                 if (converted.isNotBlank()) generateNativeWav(converted)
             } else speak(true)
         }
-        root.addView(action("Pronunciation preview") { convert() })
+        root.addView(action("Pronunciation preview") {
+            if (nativePreview.isInstalled) nativeInput() else convert()
+        })
         root.addView(label("Speech engine"))
         engineList = Spinner(this).apply {
             contentDescription = "Select underlying speech engine"
@@ -329,12 +346,27 @@ class MainActivity : Activity() {
         }
     } catch (_: Exception) { false }
 
+    private fun nativeInput(): String {
+        if (!directPhonemes.isChecked) return convert()
+        val raw = editor.text.toString().trim()
+        if (raw.isEmpty()) {
+            report("Enter Dhivehi text.")
+            return ""
+        }
+        val result = DhivehiPhoneticEngine.analyze(raw, corrections)
+        preview.text = result.annotated
+        if (result.unresolved.isNotEmpty() || result.approximate.isNotEmpty()) {
+            report("Phoneme preview. Some Dhivehi sounds are approximations; pronunciation needs listening review.")
+        }
+        return result.annotated
+    }
+
     private fun generateNativeWav(converted: String) {
         nativeExporter.cancel()
         val path = File(cacheDir, "native-eloquence-${System.currentTimeMillis()}.wav")
         generated = path
         report("Generating native Eloquence audio.")
-        nativeExporter.generate(converted, (speed.progress + 5) / 15f, path, nativeVoiceList.selectedItemPosition.coerceIn(0, 8)) { success, result ->
+        nativeExporter.generate(converted, (speed.progress + 5) / 15f, path, nativeVoiceList.selectedItemPosition.coerceIn(0, 8), directPhonemes.isChecked) { success, result ->
             ui.post {
                 if (isFinishing || isDestroyed) return@post
                 if (success && generated === path) {
