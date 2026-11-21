@@ -2,112 +2,159 @@ package com.hshareef77.dhivehiofflinetts
 
 import android.app.Activity
 import android.content.Intent
-import android.media.MediaPlayer
-import android.net.Uri
 import android.os.Bundle
-import android.view.View
-import android.view.inputmethod.InputType
-import android.widget.*
+import android.os.Handler
+import android.os.Looper
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
+import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.SeekBar
+import android.widget.TextView
+import com.hussainshareef.dhivehiofflinetts.dhivehi.DhivehiPronunciation
 import java.io.File
+import java.util.Locale
 
 /**
- * Accessible development prototype. Speech synthesis is deliberately disabled until an
- * on-device CSM backend (including Mimi decoding) is verified on Android.
+ * Phonetic Dhivehi experiment for any installed Android TTS voice.
+ * For Eloquence trials, install/select Eloquence as the phone's preferred TTS engine.
+ * It does not bundle an Eloquence voice or claim accurate Dhivehi pronunciation.
  */
 class MainActivity : Activity() {
+    private val ui = Handler(Looper.getMainLooper())
     private lateinit var editor: EditText
     private lateinit var status: TextView
-    private lateinit var voices: Spinner
+    private lateinit var preview: TextView
     private lateinit var speed: SeekBar
-    private var player: MediaPlayer? = null
-    private var audioUri: Uri? = null
-    private val importTxtCode = 101
-    private val importAudioCode = 102
-    private val exportAudioCode = 103
+    private var tts: TextToSpeech? = null
+    private var ready = false
+    private var generated: File? = null
+    private val saveRequest = 202
+    private val importTextRequest = 203
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val padding = (16 * resources.displayMetrics.density).toInt()
+        val pad = (16 * resources.displayMetrics.density).toInt()
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(padding, padding, padding, padding)
+            setPadding(pad, pad, pad, pad)
         }
-        fun caption(label: String): TextView = TextView(this).apply {
-            text = label
-            textSize = 18f
-            setPadding(0, padding / 2, 0, padding / 2)
+        fun label(value: String): TextView = TextView(this).apply {
+            text = value
+            textSize = 17f
+            setPadding(0, pad / 2, 0, pad / 2)
         }
-        fun button(label: String, onPress: () -> Unit): Button = Button(this).apply {
-            text = label
-            contentDescription = label
-            setOnClickListener { onPress() }
+        fun action(name: String, handler: () -> Unit): Button = Button(this).apply {
+            text = name
+            setOnClickListener { handler() }
+            minHeight = (56 * resources.displayMetrics.density).toInt()
         }
-        root.addView(caption("Dhivehi Offline TTS — Development Prototype"))
-        root.addView(caption("Enter or import Dhivehi text"))
+        root.addView(label("Dhivehi Pronunciation Lab"))
+        root.addView(label("Type Thaana text. Uses your installed Android TTS voice, not a bundled Dhivehi voice."))
         editor = EditText(this).apply {
             hint = "މިތާ ލިޔުއްވާ"
-            contentDescription = "Dhivehi text editor"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            minLines = 5
+            contentDescription = "Dhivehi text"
+            minLines = 4
+            setText("އައްސަލާމު ޢަލައިކުމް")
         }
         root.addView(editor)
-        root.addView(button("Import UTF-8 TXT") { pickFile("text/plain", importTxtCode) })
-        root.addView(caption("Speaker"))
-        voices = Spinner(this).apply {
-            contentDescription = "Dhivehi speaker choice"
-            adapter = ArrayAdapter(
-                this@MainActivity,
-                android.R.layout.simple_spinner_dropdown_item,
-                listOf("Female speaker 1", "Male speaker 1", "Female speaker 2",
-                    "Male speaker 2", "Male speaker 3")
-            )
-        }
-        root.addView(voices)
-        status = caption("The offline speech engine is not installed or verified. Audio generation is unavailable.")
-        status.isFocusable = true
-        root.addView(status)
-        root.addView(button("Generate speech — not available yet") {
-            report("The 6.6 GB CSM model has not been converted and tested for local Android speech generation.")
+        root.addView(action("Import text") {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "text/plain"
+            }, importTextRequest)
         })
-        root.addView(caption("Audio playback testing (existing WAV or other Android-supported audio files)"))
-        root.addView(button("Open audio file") { pickFile("audio/*", importAudioCode) })
-        root.addView(button("Play") { play() })
-        root.addView(button("Pause") {
-            player?.let { if (it.isPlaying) it.pause() }
-            report("Playback paused")
-        })
-        root.addView(button("Stop") {
-            player?.let { if (it.isPlaying) it.pause(); it.seekTo(0) }
-            report("Playback stopped")
-        })
-        root.addView(caption("Playback speed, 0.5 to 2.0 times"))
+        root.addView(action("Show pronunciation") { convert() })
+        preview = label("Pronunciation preview appears here")
+        preview.isFocusable = true
+        root.addView(preview)
+        root.addView(label("Voice speed"))
         speed = SeekBar(this).apply {
-            max = 15
-            progress = 5
-            contentDescription = "Playback speed, 1.0 times"
+            max = 30
+            progress = 10
+            contentDescription = "Voice speed: 1.0"
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    val value = (progress + 5) / 10f
-                    contentDescription = "Playback speed, ${value} times"
-                    try { player?.let { it.playbackParams = it.playbackParams.setSpeed(value) } } catch (_: Exception) {}
+                override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
+                    contentDescription = "Voice speed: ${(value + 5) / 15.0}"
                 }
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStartTrackingTouch(bar: SeekBar?) {}
+                override fun onStopTrackingTouch(bar: SeekBar?) {}
             })
         }
         root.addView(speed)
-        root.addView(button("Export selected audio file") {
-            if (audioUri == null) report("Open an audio file first.")
-            else startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "audio/*"
-                putExtra(Intent.EXTRA_TITLE, "dhivehi-audio-copy")
-            }, exportAudioCode)
+        root.addView(action("Speak") { speak(false) })
+        root.addView(action("Stop") { tts?.stop(); report("Stopped") })
+        root.addView(action("Generate audio") { speak(true) })
+        root.addView(action("Open TTS settings") {
+            try {
+                startActivity(Intent("com.android.settings.TTS_SETTINGS"))
+            } catch (_: Exception) { report("Open Android Settings, Text-to-speech output, and select your preferred voice.") }
         })
-        root.addView(caption("This prototype does not generate speech or download the model. Playback can be tested offline using existing audio files."))
+        status = label("Initializing installed speech engine")
+        status.isFocusable = true
+        root.addView(status)
         val scroll = ScrollView(this)
         scroll.addView(root)
         setContentView(scroll)
+        tts = TextToSpeech(applicationContext) { result ->
+            ui.post {
+                ready = result == TextToSpeech.SUCCESS
+                if (ready) {
+                    // Latin phonetic approximations need a voice that can read Latin.
+                    tts?.language = Locale.US
+                    tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                        override fun onStart(utteranceId: String?) {}
+                        override fun onDone(utteranceId: String?) {
+                            if (utteranceId == "audio") ui.post {
+                                if (!isFinishing && generated?.exists() == true) {
+                                    report("Audio ready. Choose where to save.")
+                                    startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                                        addCategory(Intent.CATEGORY_OPENABLE)
+                                        type = "audio/wav"
+                                        putExtra(Intent.EXTRA_TITLE, "dhivehi-pronunciation.wav")
+                                    }, saveRequest)
+                                }
+                            }
+                        }
+                        @Deprecated("Android TTS overload")
+                        override fun onError(utteranceId: String?) {
+                            ui.post { report("Speech failed. Check your installed TTS engine.") }
+                        }
+                    })
+                    report("Voice ready. Select Eloquence in Android TTS settings to test its voice.")
+                } else report("No working Android TTS engine found.")
+            }
+        }
+    }
+
+    private fun convert(): String {
+        val input = editor.text.toString().trim()
+        if (input.isEmpty()) {
+            report("Enter some Dhivehi text.")
+            return ""
+        }
+        val result = DhivehiPronunciation.transliterate(input)
+        preview.text = result
+        return result
+    }
+
+    private fun speak(toFile: Boolean) {
+        if (!ready) return report("Speech engine not ready. Check TTS settings.")
+        val phonetics = convert()
+        if (phonetics.isEmpty()) return
+        val engine = tts ?: return
+        engine.setSpeechRate((speed.progress + 5) / 15f)
+        if (toFile) {
+            generated = File(cacheDir, "dhivehi-pronunciation.wav")
+            val result = engine.synthesizeToFile(phonetics, Bundle(), generated!!, "audio")
+            if (result != TextToSpeech.SUCCESS) report("Unable to start audio generation.")
+            else report("Generating audio using installed voice.")
+        } else {
+            val result = engine.speak(phonetics, TextToSpeech.QUEUE_FLUSH, Bundle(), "preview")
+            if (result != TextToSpeech.SUCCESS) report("Unable to start speech.")
+        }
     }
 
     private fun report(message: String) {
@@ -115,74 +162,36 @@ class MainActivity : Activity() {
         status.announceForAccessibility(message)
     }
 
-    private fun pickFile(type: String, code: Int) {
-        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            this.type = type
-        }, code)
-    }
-
-    private fun play() {
-        val uri = audioUri ?: return report("Open an audio file first.")
-        try {
-            if (player == null) {
-                player = MediaPlayer().apply {
-                    setDataSource(this@MainActivity, uri)
-                    prepare()
-                    setOnCompletionListener { report("Playback complete") }
-                }
-            }
-            player?.start()
-            player?.let { it.playbackParams = it.playbackParams.setSpeed((speed.progress + 5) / 10f) }
-            report("Playing audio")
-        } catch (e: Exception) {
-            player?.release()
-            player = null
-            report("Unable to play this audio file.")
-        }
-    }
-
-    @Deprecated("Minimal prototype uses Activity result callbacks without external dependencies")
+    @Deprecated("ActivityResult callback for simple document actions")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         try {
             when (requestCode) {
-                importTxtCode -> {
-                    val txt = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use {
+                importTextRequest -> {
+                    val input = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use {
                         it.readText()
-                    } ?: error("Cannot read text")
-                    require(txt.length <= 200_000) { "Text file too large" }
-                    editor.setText(txt)
-                    report("Dhivehi text imported. Speech generation is not yet available.")
+                    } ?: error("Cannot read file")
+                    require(input.length <= 200_000) { "Text too long" }
+                    editor.setText(input)
+                    report("Text imported")
                 }
-                importAudioCode -> {
-                    player?.release()
-                    player = null
-                    audioUri = uri
-                    report("Audio selected. Activate Play to listen offline.")
-                }
-                exportAudioCode -> {
-                    val source = audioUri ?: error("No selected audio file")
-                    contentResolver.openInputStream(source).use { input ->
-                        contentResolver.openOutputStream(uri).use { output ->
-                            requireNotNull(input) { "Cannot read source" }
-                            requireNotNull(output) { "Cannot write destination" }
-                            input.copyTo(output)
-                        }
-                    }
-                    report("Audio copied to your selected destination in its original format.")
+                saveRequest -> {
+                    val file = generated ?: error("No generated speech")
+                    contentResolver.openOutputStream(uri)?.use { output ->
+                        file.inputStream().use { it.copyTo(output) }
+                    } ?: error("Cannot save audio")
+                    report("Audio saved")
                 }
             }
-        } catch (e: Exception) {
-            report("File operation failed: ${e.message ?: "Unknown error"}")
-        }
+        } catch (_: Exception) { report("Unable to open or save the selected file.") }
     }
 
     override fun onDestroy() {
-        player?.release()
-        player = null
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
         super.onDestroy()
     }
 }
