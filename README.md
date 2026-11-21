@@ -12,7 +12,19 @@ The app lets you enter or import Thaana text, inspect an **experimental** Latin 
 
 An automated import of public [evvdroid](https://github.com/trypsynth/evvdroid) reference code has populated `third_party/eloquence-reference`. This is **not** a byte-identical upload of the user's supplied `free-eloquence-tts-source.zip`. The import excludes IBM-derived voice resources, proprietary-derived tables, signing credentials and build artifacts. See [import notice](third_party/eloquence-reference/IMPORT_NOTICE.md).
 
-Native phoneme feasibility notes: [docs/PHONEME_ENGINE_RESEARCH.md](docs/PHONEME_ENGINE_RESEARCH.md).\n\n## Direct native Eloquence integration (new)
+Native phoneme feasibility notes: [docs/PHONEME_ENGINE_RESEARCH.md](docs/PHONEME_ENGINE_RESEARCH.md).\n\n## Nine native Eloquence voices (current development)
+
+The app now exposes the original voice presets **Reed, Shelley, Bobby, Rocko, Glen, Sandy, Grandma, Grandpa and Luna** through an accessible selector. The selection is persisted locally and used in:
+
+- Direct native Speak playback;
+- Direct native Generate audio (WAV);
+- The experimental system-wide Dhivehi TTS service.
+
+The preset mapping follows the uploaded Free Eloquence `Eci.kt` and `EvvEngine.kt`: preset 1–8 is copied to scratch voice 9, then to current voice 0. Luna uses the Grandpa-derived custom shape from upstream. These voices are only actually heard when an APK includes a successfully compiled native `libevvjni.so` and its required English-language speech data. Switching voices **does not** automatically solve Dhivehi phoneme accuracy.
+
+The implementation also fixes the native voice test button's Kotlin closure syntax. A successful Android CI build is still not confirmed.
+
+## Direct native Eloquence integration (new)
 
 A **direct synthesis implementation now exists in the Android source**:
 
