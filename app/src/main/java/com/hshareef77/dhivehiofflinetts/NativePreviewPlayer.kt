@@ -9,7 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import com.blindtechnexus.freeeloquencetts.EvvNative
 import java.nio.charset.Charset
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * In-app low-latency preview of the *actual* native Eloquence engine.
@@ -21,7 +21,7 @@ internal class NativePreviewPlayer(
     private val report: (String) -> Unit
 ) {
     private val ui = Handler(Looper.getMainLooper())
-    private val cancelled = AtomicBoolean(false)
+    private val generation = AtomicInteger(0)
     private val encoding = Charset.forName("windows-1252")
     @Volatile private var nativeHandle = 0L
     @Volatile private var track: AudioTrack? = null
@@ -44,7 +44,8 @@ internal class NativePreviewPlayer(
             report("Native preview supports short passages. Select up to 3800 characters.")
             return
         }
-        cancelled.set(false)
+        val myGeneration = generation.get()
+        fun cancelled(): Boolean = generation.get() != myGeneration
         val worker = Thread({
             var handle = 0L
             var output: AudioTrack? = null
@@ -76,12 +77,12 @@ internal class NativePreviewPlayer(
                 output.play()
                 val bytes = ByteArray(4096)
                 var timeouts = 0
-                while (!cancelled.get()) {
+                while (!cancelled()) {
                     when (val count = EvvNative.read(handle, bytes, 200)) {
                         in 1..4096 -> {
                             var offset = 0
                             timeouts = 0
-                            while (offset < count && !cancelled.get()) {
+                            while (offset < count && !cancelled()) {
                                 val written = output.write(bytes, offset, count - offset)
                                 if (written <= 0) error("Audio playback failed.")
                                 offset += written
@@ -93,7 +94,7 @@ internal class NativePreviewPlayer(
                         else -> error("Native engine audio error.")
                     }
                 }
-                if (!cancelled.get()) ui.post { report("Native preview complete.") }
+                if (!cancelled()) ui.post { report("Native preview complete.") }
             } catch (e: Throwable) {
                 if (!cancelled.get()) ui.post {
                     report(e.message ?: "Unable to play native Eloquence speech.")
@@ -112,7 +113,7 @@ internal class NativePreviewPlayer(
     }
 
     fun stop() {
-        cancelled.set(true)
+        generation.incrementAndGet()
         val h = nativeHandle
         if (h != 0L) try { EvvNative.stop(h) } catch (_: Throwable) {}
         try { track?.pause(); track?.flush() } catch (_: Throwable) {}
