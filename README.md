@@ -2,6 +2,12 @@
 
 **Current goal:** explore fast, offline Dhivehi speech through the existing Eloquence-style voices, with a native accessible Android interface. The previous 6.6 GB CSM model and five-speaker offline narration prototype are **no longer the current project direction**.
 
+## Dhivehi naturalness pass — version 0.6 (21 November 2026)
+
+Implemented **a single Dhivehi phonology pipeline** rather than a duplicate Thaana-to-English conversion for native speech. [DhivehiEloquenceMapper](app/src/main/kotlin/com/hussainshareef/dhivehiofflinetts/dhivehi/DhivehiEloquenceMapper.kt) maps a linguistically represented IPA phone sequence to available native Eloquence acoustic phonemes. It flags missing/approximated sounds. [DhivehiProsody](app/src/main/kotlin/com/hussainshareef/dhivehiofflinetts/dhivehi/DhivehiProsody.kt) adds two listening styles: **Connected** (shorter phrase pauses) and **Clear** (longer pauses). A first-pass leftmost-heavy syllable stress rule and revised prenasalized stop / special sukun handling are included, with JVM regression tests.
+
+Two genuine host-native OpenEVV English-voice demonstrations were generated, lasting **7.04 and 7.91 seconds**, to compare delivery rhythm. See [listening protocol and limitations](docs/DHIVEHI_NATURALNESS_PASS_2026-11-21.md). Audio clarity and accurate natural Dhivehi pronunciation still require fluent speaker assessment. The real Android-native library build and TalkBack reliability remain unverified. Do not enable the experimental system TTS as your primary accessibility voice until it is properly validated.
+
 ## New priority: direct Dhivehi phonemes (November 2026)
 
 **Direct phoneme synthesis is now the default when the native Eloquence library is present.** Two new pieces separate Dhivehi linguistics from English voice mappings: [DhivehiPhonology.kt](app/src/main/kotlin/com/hussainshareef/dhivehiofflinetts/dhivehi/DhivehiPhonology.kt) represents Dhivehi phonemes and contrasts using IPA, while [DhivehiPhoneticEngine.kt](app/src/main/kotlin/com/hussainshareef/dhivehiofflinetts/dhivehi/DhivehiPhoneticEngine.kt) produces native OpenEVV phoneme annotations. JNI explicitly enables the engine's phonetic annotation input mode for direct Speak, system TTS and native WAV export. This bypasses ordinary English spelling-to-pronunciation rules for Thaana input.
