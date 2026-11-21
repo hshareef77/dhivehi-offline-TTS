@@ -24,8 +24,8 @@ object DhivehiPhoneticEngine {
     private val consonants = mapOf(
         'ހ' to "h", 'ށ' to "S", 'ނ' to "n", 'ރ' to "r",
         'ބ' to "b", 'ޅ' to "l", 'ކ' to "k", 'އ' to "",
-        'ވ' to "v", 'މ' to "m", 'ފ' to "f", 'ދ' to "D",
-        'ތ' to "T", 'ލ' to "l", 'ގ' to "g", 'ޏ' to "ny",
+        'ވ' to "v", 'މ' to "m", 'ފ' to "f", 'ދ' to "d",
+        'ތ' to "t", 'ލ' to "l", 'ގ' to "g", 'ޏ' to "ny",
         'ސ' to "s", 'ޑ' to "d", 'ޒ' to "z", 'ޓ' to "t",
         'ޔ' to "y", 'ޕ' to "p", 'ޖ' to "J", 'ޗ' to "C",
         'ޘ' to "T", 'ޙ' to "h", 'ޚ' to "k",
@@ -39,9 +39,11 @@ object DhivehiPhoneticEngine {
         'ު' to "u", 'ޫ' to "uu", 'ެ' to "E", 'ޭ' to "ee",
         'ޮ' to "o", 'ޯ' to "oo"
     )
-    // Existing English voice phonemes do not maintain these Dhivehi contrasts.
+    // English 'th' is a fricative and would be WRONG for Dhivehi dental
+    // stops ތ /t̪/ and ދ /d̪/. We use the nearest STOP 't'/'d' and warn.
+    // English voice phonemes do not maintain the dental/retroflex contrasts.
     private val approximateLetters = setOf(
-        'ށ', 'ޅ', 'ޏ', 'ޑ', 'ޓ', 'ޘ', 'ޙ', 'ޚ', 'ޛ', 'ޞ',
+        'ށ', 'ޅ', 'ޏ', 'ދ', 'ތ', 'ޑ', 'ޓ', 'ޘ', 'ޙ', 'ޚ', 'ޛ', 'ޞ',
         'ޟ', 'ޠ', 'ޡ', 'ޢ', 'ޣ', 'ޤ', 'ޱ'
     )
     private const val SUKUN = 'ް'
