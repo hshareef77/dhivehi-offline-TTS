@@ -34,10 +34,10 @@ internal class NativeEloquenceBackend {
      * handle lifetime is held until service destruction after synthesis.
      */
     fun synthesize(phonetics: String, speed: Int, pitch: Int, callback: SynthesisCallback): Boolean {
-        if (!open()) return false
-        val h = handle
-        if (h == 0L || phonetics.isBlank()) return false
         stop.set(false)
+        if (!open() || stop.get()) return false
+        val h = handle
+        if (h == 0L || phonetics.isBlank() || stop.get()) return false
         val data = phonetics.toByteArray(cp1252)
         if (data.isEmpty() || data.size > 3800) return false
         try {
