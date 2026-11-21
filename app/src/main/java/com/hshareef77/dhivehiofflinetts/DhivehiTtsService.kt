@@ -82,6 +82,9 @@ class DhivehiTtsService : TextToSpeechService() {
 
     override fun onGetVoices(): List<Voice> = listOf(experimentalVoice)
 
+    override fun onGetDefaultVoiceNameFor(lang: String, country: String, variant: String): String? =
+        if (isDhivehi(lang)) experimentalVoice.name else null
+
     override fun onIsValidVoiceName(voiceName: String): Int =
         if (voiceName == experimentalVoice.name) TextToSpeech.SUCCESS else TextToSpeech.ERROR
 
