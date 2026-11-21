@@ -144,6 +144,13 @@ class MainActivity : Activity() {
                 ready = result == TextToSpeech.SUCCESS
                 if (ready) {
                     val languageStatus = tts?.setLanguage(Locale.US)
+                    // Preserve the default provider before this wrapper is selected as default.
+                    val provider = tts?.defaultEngine
+                    val config = getSharedPreferences("tts_config", MODE_PRIVATE)
+                    if (config.getString("delegate_package", null).isNullOrBlank() &&
+                        !provider.isNullOrBlank() && provider != packageName) {
+                        config.edit().putString("delegate_package", provider).apply()
+                    }
                     populateEngines()
                     populateVoices()
                     tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -244,7 +251,7 @@ class MainActivity : Activity() {
             voiceList.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
                 if (list.isEmpty()) listOf("No offline voice found")
                 else list.map { "${it.name} (${it.locale.displayName})" })
-            val remembered = getPreferences(MODE_PRIVATE).getString("voice", null)
+            val remembered = getSharedPreferences("tts_config", MODE_PRIVATE).getString("voice", null)
             val selected = list.indexOfFirst { it.name == remembered }
             if (selected >= 0) voiceList.setSelection(selected)
         } catch (_: Exception) {
@@ -256,7 +263,7 @@ class MainActivity : Activity() {
     private fun applySelectedVoice(engine: TextToSpeech) {
         val voice = availableVoices.getOrNull(voiceList.selectedItemPosition) ?: return
         if (engine.setVoice(voice) == TextToSpeech.SUCCESS) {
-            getPreferences(MODE_PRIVATE).edit().putString("voice", voice.name).apply()
+            getSharedPreferences("tts_config", MODE_PRIVATE).edit().putString("voice", voice.name).apply()
         }
     }
 
