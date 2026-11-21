@@ -40,6 +40,19 @@ class DhivehiPronunciationTest {
         assertEquals("Hello!", DhivehiPronunciation.transliterate("ހާ!", mapOf("ހާ" to "Hello")))
     }
 
+    @Test fun commonSampleTransliterations() {
+        assertEquals("dhivehi", DhivehiPronunciation.transliterate("ދިވެހި"))
+        assertEquals("maale", DhivehiPronunciation.transliterate("މާލެ"))
+        assertEquals("raajje", DhivehiPronunciation.transliterate("ރާއްޖެ"))
+        assertEquals("assalaamu alaikum",
+            DhivehiPronunciation.transliterate("އައްސަލާމު ޢަލައިކުމް"))
+    }
+
+    @Test fun overrideDoesNotChangeOtherWords() {
+        assertEquals("custom maale",
+            DhivehiPronunciation.transliterate("ދިވެހި މާލެ", mapOf("ދިވެހި" to "custom")))
+    }
+
     @Test fun samplePhraseIsDeterministic() {
         val sample = "އައްސަލާމު ޢަލައިކުމް"
         val first = DhivehiPronunciation.transliterate(sample)
