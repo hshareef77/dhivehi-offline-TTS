@@ -26,6 +26,25 @@ class DhivehiPhonologyTest {
         assertTrue(word.ipa.contains("ʔ"))
         assertTrue(word.warnings.isNotEmpty())
     }
+    @Test fun noonuWithoutVowelBeforeStopIsPrenasalized() {
+        val word = DhivehiPhonology.analyzeWord("ކަނޑު")
+        assertEquals("kaⁿɖu", word.ipa)
+        assertTrue(word.warnings.isNotEmpty())
+        assertEquals("kaɖu", DhivehiPhonology.analyzeWord("ކަޑު").ipa)
+    }
+    @Test fun shaviyaniAndThaaSukunFinalsAreClosures() {
+        assertEquals("raʔ", DhivehiPhonology.analyzeWord("ރަށް").ipa)
+        assertEquals("rajʔ", DhivehiPhonology.analyzeWord("ރަތް").ipa)
+    }
+    @Test fun thaaSukunBeforeConsonantAddsPalatalGlideAndGemination() {
+        val word = DhivehiPhonology.analyzeWord("އަތްޕުޅު")
+        assertEquals("ajpp uɭu".replace(" ",""), word.ipa)
+    }
+    @Test fun noonuSukunBeforeNasalShowsGemination() {
+        val word = DhivehiPhonology.analyzeWord("އެންމެ")
+        assertEquals("emme", word.ipa)
+    }
+
     @Test fun sprAndIpaAvailableSeparately() {
         val result = DhivehiPhoneticEngine.analyze("ދިވެހި")
         assertEquals("d̪iʋehi", result.ipaPreview)
