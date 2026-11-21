@@ -43,6 +43,19 @@ object DhivehiEloquenceMapper {
         val output = StringBuilder()
         val approximated = linkedSetOf<String>()
         val onset = StringBuilder()
+        val phones = word.phones
+        val vowelPositions = phones.indices.filter { phones[it].ipa in vowels }
+        // Dhivehi stress is often described as leftmost heavy syllable,
+        // otherwise the first. A long vowel or a following geminate consonant
+        // makes a syllable potentially heavy. This is an approximation, and
+        // lexical/dialect-specific exceptions need future corpus review.
+        val stressSyllable = vowelPositions.indexOfFirst { vowelAt ->
+            val isLongVowel = phones[vowelAt].long
+            val nextVowel = vowelPositions.firstOrNull { it > vowelAt } ?: phones.size
+            val followingGeminate = (vowelAt + 1 until nextVowel).any { phones[it].long }
+            isLongVowel || followingGeminate
+        }.let { if (it < 0) 0 else it }
+        var syllable = 0
         var firstSyllable = true
         for (phone in word.phones) {
             if (phone.ipa in approximations) approximated.add(phone.ipa)
@@ -52,7 +65,8 @@ object DhivehiEloquenceMapper {
                 continue
             }
             if (phone.ipa in vowels) {
-                output.append(if (firstSyllable) ".1" else ".0")
+                output.append(if (syllable == stressSyllable) ".1" else ".0")
+                syllable++
                 output.append(onset)
                 output.append(code)
                 onset.setLength(0)
