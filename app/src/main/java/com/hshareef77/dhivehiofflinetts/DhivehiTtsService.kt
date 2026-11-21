@@ -10,6 +10,7 @@ import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import com.hussainshareef.dhivehiofflinetts.dhivehi.DhivehiPronunciation
 import com.hussainshareef.dhivehiofflinetts.dhivehi.DhivehiPhoneticEngine
+import com.hussainshareef.dhivehiofflinetts.dhivehi.DhivehiProsody
 import com.hussainshareef.dhivehiofflinetts.dhivehi.WavePcm
 import java.io.File
 import java.io.RandomAccessFile
@@ -117,7 +118,10 @@ class DhivehiTtsService : TextToSpeechService() {
         // Generic Android TTS providers never receive these instructions.
         if (nativeBackend.available && nativeBackend.open()) {
             val result = DhivehiPhoneticEngine.analyze(raw, corrections)
-            val nativeText = result.annotated
+            val cadence = getSharedPreferences("tts_config", MODE_PRIVATE).getInt("cadence", 0)
+            val nativeText = DhivehiProsody.render(result.annotated,
+                if (cadence == 1) DhivehiProsody.Style.CLEAR
+                else DhivehiProsody.Style.CONNECTED)
             if (nativeText.isBlank() || nativeText.length > 3800) {
                 callback.error()
                 return
