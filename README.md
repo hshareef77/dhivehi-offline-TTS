@@ -2,6 +2,14 @@
 
 **Current goal:** explore fast, offline Dhivehi speech through the existing Eloquence-style voices, with a native accessible Android interface. The previous 6.6 GB CSM model and five-speaker offline narration prototype are **no longer the current project direction**.
 
+## New priority: direct Dhivehi phonemes (November 2026)
+
+**Direct phoneme synthesis is now the default when the native Eloquence library is present.** Two new pieces separate Dhivehi linguistics from English voice mappings: [DhivehiPhonology.kt](app/src/main/kotlin/com/hussainshareef/dhivehiofflinetts/dhivehi/DhivehiPhonology.kt) represents Dhivehi phonemes and contrasts using IPA, while [DhivehiPhoneticEngine.kt](app/src/main/kotlin/com/hussainshareef/dhivehiofflinetts/dhivehi/DhivehiPhoneticEngine.kt) produces native OpenEVV phoneme annotations. JNI explicitly enables the engine's phonetic annotation input mode for direct Speak, system TTS and native WAV export. This bypasses ordinary English spelling-to-pronunciation rules for Thaana input.
+
+A separate checkbox allows returning to **Latin fallback** for comparison. The UI can show the Dhivehi IPA analysis, the exact native SPR commands, and store corrected SPR pronunciations per word. We added phonology and phoneme safety regression tests.
+
+An actual host-native OpenEVV WAV demonstration lasting **5.90 seconds** has been generated using these experimental native phoneme instructions. See [listening experiment and test text](docs/DHIVEHI_DIRECT_PHONEME_EXPERIMENT.md). The native phoneme path is real, **but the English Eloquence voice does not yet produce linguistically verified Dhivehi pronunciation**, and the Android-native build has not passed verification.
+
 ## Current working design
 
 The app lets you enter or import Thaana text, inspect an **experimental** Latin phonetic conversion, play it with an installed Android TTS engine, choose among the selected engine's reported offline voices, stop speech, save per-word pronunciation corrections offline, adjust speaking speed, play longer text in bounded segments, and request WAV audio generation using the Android system TTS API. Automated JVM checks cover sample spellings, word overrides, basic sukun handling, mixed-script handling and chunking. WAV file generation currently has a text-length limit; long passages can be spoken but cannot yet be exported as one WAV. It uses the phone's currently selected TTS engine, so **install and select Eloquence in Android TTS settings** to hear the experiment with Eloquence voices.
