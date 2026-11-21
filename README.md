@@ -12,7 +12,21 @@ The app lets you enter or import Thaana text, inspect an **experimental** Latin 
 
 An automated import of public [evvdroid](https://github.com/trypsynth/evvdroid) reference code has populated `third_party/eloquence-reference`. This is **not** a byte-identical upload of the user's supplied `free-eloquence-tts-source.zip`. The import excludes IBM-derived voice resources, proprietary-derived tables, signing credentials and build artifacts. See [import notice](third_party/eloquence-reference/IMPORT_NOTICE.md).
 
-Native phoneme feasibility notes: [docs/PHONEME_ENGINE_RESEARCH.md](docs/PHONEME_ENGINE_RESEARCH.md).\n\n## Experimental system-wide TTS adapter (new)
+Native phoneme feasibility notes: [docs/PHONEME_ENGINE_RESEARCH.md](docs/PHONEME_ENGINE_RESEARCH.md).\n\n## Direct native Eloquence integration (new)
+
+A **direct synthesis implementation now exists in the Android source**:
+
+- `EvvNative.kt` uses the JNI function names from the uploaded Free Eloquence source.
+- `NativeEloquenceBackend.kt` streams PCM directly into Android's system TTS callback at 11025 Hz; the native path does not depend on a second TTS engine or intermediate WAV.
+- `NativePreviewPlayer.kt` plays the native speech through Android `AudioTrack` on a worker thread.
+- `NativeWaveExporter.kt` saves direct native PCM as a proper WAV file. The Generate audio button selects it automatically when the native library is installed.
+- Fast Stop requests signal the native engine instead of blocking Android's UI thread.
+
+**Build distinction:** The ordinary debug APK still uses the selected external Android TTS engine because it has no `libevvjni.so`. To build an APK *with* the actual native engine, choose Actions → **Android APK build and pronunciation tests** → **Run workflow** → **native_engine = true**. This manual mode restores the full OpenEVV source and English voice data in the GitHub runner, uses Android NDK r26 to compile the arm64 native library, and packages it into the APK. Native files are not checked into this public repository, and this native mode does not publish a GitHub Release. The produced GitHub Actions artifact should only be used in accordance with the rights to the voice resources.
+
+The direct code is committed but **native-enabled compilation and actual speech have not been verified**. This is not yet a certified Dhivehi voice. Our Thaana language rules still approximate Dhivehi using English voice phonemes, and fidelity needs real listening tests.
+
+## Experimental system-wide TTS adapter (new)
 
 A standard Android `TextToSpeechService` is registered but **disabled by default** so it cannot accidentally replace a screen reader's reliable voice. It exposes an experimental `dv-MV` voice by translating Thaana to an approximate Latin pronunciation, delegating synthesis to a **different installed offline-capable TTS engine**, verifying its WAV PCM output, and relaying it to Android's speech callback.
 
@@ -42,6 +56,6 @@ The legacy CSM model is not downloaded or used by this app.
 
 ## Source and runtime limitations (November 2026)
 
-The exact user-provided Free Eloquence source ZIP is not present as a complete repository archive. The separate public reference snapshot does not contain the IBM-derived acoustic/language assets needed to run native OpenEVV. **No independent native Eloquence voice has been integrated or verified.** Current speech/audio output requires a separate installed offline TTS engine. The experimental system service is disabled by default for screen-reader safety; it buffers a WAV before playback and is not designed for low-latency navigation.
+The exact user-provided Free Eloquence source ZIP is not present as a complete repository archive. Direct integration uses its documented JNI API and the upstream reference source. The separate public reference snapshot does not contain the IBM-derived acoustic/language assets needed to run native OpenEVV. **Native Eloquence integration code has been implemented, but no native-enabled APK has passed verification yet.** Standard builds still require a separate installed offline TTS engine; opt-in native builds are designed to bundle the native engine. The experimental system service is disabled by default for screen-reader safety. When the native library is unavailable it buffers a WAV from another engine, which is not designed for low-latency navigation; the native path streams PCM directly.
 
 Building and speech testing against a real Android device remain unverified in this chat. Do not label a generated artifact as a validated Dhivehi engine without an actual speech test.
